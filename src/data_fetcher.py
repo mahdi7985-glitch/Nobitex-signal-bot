@@ -26,7 +26,7 @@ class NobitexDataFetcher:
         # آدرس‌های API
         # =========================
         self.base_url_public = "https://apiv2.nobitex.ir"
-        self.base_url_stats = "https://apiv2.nobitex.ir"  # ✅ تغییر به apiv2 مثل ربات قبلی
+        self.base_url_stats = "https://api.nobitex.ir"  # ✅ برگشت به api.nobitex.ir
         
         self.session = requests.Session()
         self.session.headers.update({
@@ -193,7 +193,7 @@ class NobitexDataFetcher:
     
     def get_current_price(self, symbol: str) -> Optional[float]:
         """
-        دریافت قیمت لحظه‌ای با استفاده از POST (مثل ربات قبلی)
+        دریافت قیمت لحظه‌ای با GET
         """
         nobitex_symbol = self._get_nobitex_symbol(symbol)
         if not nobitex_symbol:
@@ -203,16 +203,16 @@ class NobitexDataFetcher:
             self._rate_limit('stats')
             url = f"{self.base_url_stats}/market/stats"
             
-            payload = {
-                "srcCurrency": symbol,
-                "dstCurrency": "USDT"
+            params = {
+                'srcCurrency': symbol,
+                'dstCurrency': 'USDT'
             }
             
             logger.debug(f"Fetching price for {symbol}")
             
-            response = self.session.post(
-                url,
-                json=payload,
+            response = self.session.get(
+                url, 
+                params=params,
                 timeout=Config.REQUEST_TIMEOUT
             )
             
@@ -224,8 +224,7 @@ class NobitexDataFetcher:
                     market_key = f"{symbol.lower()}-usdt"
                     ticker = stats.get(market_key, {})
                     
-                    # مثل ربات قبلی: اول bestSell، بعد lastPrice
-                    price = ticker.get('bestSell') or ticker.get('lastPrice')
+                    price = ticker.get('lastPrice')
                     if price:
                         return float(price)
                     else:
@@ -244,18 +243,54 @@ class NobitexDataFetcher:
     
     def get_multiple_prices(self, symbols: List[str]) -> Dict[str, Optional[float]]:
         """
-        دریافت قیمت چند ارز با POST
+        دریافت قیمت چند ارز به صورت همزمان با GET
         """
         if not symbols:
             return {}
         
-        # POST برای هر ارز جداگانه (مثل ربات قبلی)
-        prices = {}
-        for symbol in symbols:
-            price = self.get_current_price(symbol)
-            prices[symbol] = price
-        
-        return prices
+        try:
+            self._rate_limit('stats')
+            url = f"{self.base_url_stats}/market/stats"
+            
+            src_currency = ",".join(symbols)
+            params = {
+                'srcCurrency': src_currency,
+                'dstCurrency': 'USDT'
+            }
+            
+            response = self.session.get(
+                url, 
+                params=params,
+                timeout=Config.REQUEST_TIMEOUT
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get('status') == 'ok':
+                    stats = data.get('stats', {})
+                    prices = {}
+                    
+                    for symbol in symbols:
+                        market_key = f"{symbol.lower()}-usdt"
+                        ticker = stats.get(market_key, {})
+                        price = ticker.get('lastPrice')
+                        if price:
+                            prices[symbol] = float(price)
+                        else:
+                            prices[symbol] = None
+                    
+                    return prices
+                else:
+                    logger.error(f"❌ API Error: {data}")
+                    return {}
+            else:
+                logger.error(f"❌ HTTP Error {response.status_code}")
+                return {}
+                
+        except Exception as e:
+            logger.error(f"❌ Error getting multiple prices: {e}")
+            return {}
     
     def clear_cache(self):
         """پاک کردن کش"""
