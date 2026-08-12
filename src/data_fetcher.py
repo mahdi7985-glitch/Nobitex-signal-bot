@@ -23,16 +23,14 @@ class NobitexDataFetcher:
     
     def __init__(self):
         # =========================
-        # آدرس‌های API (ترکیبی)
+        # آدرس‌های API
         # =========================
-        # UDF: با دامنه (که کار میکنه)
         self.base_url_public = "https://apiv2.nobitex.ir"
-        
-        # Stats: با IP مستقیم (برای حل مشکل DNS)
-        self.base_url_stats = "https://185.165.190.10"
+        self.base_url_stats = "https://apiv2.nobitex.ir"  # ✅ تغییر به apiv2 مثل ربات قبلی
         
         self.session = requests.Session()
         self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Content-Type": "application/json"
         })
         
@@ -41,7 +39,7 @@ class NobitexDataFetcher:
         # Rate Limit
         self.rate_limits = {
             'stats': {
-                'min_interval': 3.0,
+                'min_interval': 2.0,
                 'last_request_time': 0
             },
             'udf': {
@@ -194,27 +192,27 @@ class NobitexDataFetcher:
             return None
     
     def get_current_price(self, symbol: str) -> Optional[float]:
-        """دریافت قیمت لحظه‌ای با IP مستقیم"""
+        """
+        دریافت قیمت لحظه‌ای با استفاده از POST (مثل ربات قبلی)
+        """
         nobitex_symbol = self._get_nobitex_symbol(symbol)
         if not nobitex_symbol:
             return None
         
         try:
             self._rate_limit('stats')
+            url = f"{self.base_url_stats}/market/stats"
             
-            # تنظیم هدر Host برای Stats
-            self.session.headers.update({"Host": "api.nobitex.ir"})
-            
-            url = f"{self.base_url_stats}/v2/market/stats"
-            
-            params = {
-                'srcCurrency': symbol,
-                'dstCurrency': 'USDT'
+            payload = {
+                "srcCurrency": symbol,
+                "dstCurrency": "USDT"
             }
             
-            response = self.session.get(
-                url, 
-                params=params,
+            logger.debug(f"Fetching price for {symbol}")
+            
+            response = self.session.post(
+                url,
+                json=payload,
                 timeout=Config.REQUEST_TIMEOUT
             )
             
@@ -225,18 +223,19 @@ class NobitexDataFetcher:
                     stats = data.get('stats', {})
                     market_key = f"{symbol.lower()}-usdt"
                     ticker = stats.get(market_key, {})
-                    price = float(ticker.get('latest', 0))
                     
-                    if price > 0:
-                        return price
+                    # مثل ربات قبلی: اول bestSell، بعد lastPrice
+                    price = ticker.get('bestSell') or ticker.get('lastPrice')
+                    if price:
+                        return float(price)
                     else:
-                        logger.warning(f"⚠️ Invalid price for {symbol}")
+                        logger.warning(f"⚠️ No price data for {symbol}")
                         return None
                 else:
-                    logger.error(f"❌ API Error getting price for {symbol}: {data}")
+                    logger.error(f"❌ API Error: {data}")
                     return None
             else:
-                logger.error(f"❌ HTTP Error {response.status_code} getting price for {symbol}")
+                logger.error(f"❌ HTTP Error {response.status_code}")
                 return None
                 
         except Exception as e:
@@ -244,54 +243,19 @@ class NobitexDataFetcher:
             return None
     
     def get_multiple_prices(self, symbols: List[str]) -> Dict[str, Optional[float]]:
-        """دریافت قیمت چند ارز به صورت همزمان با IP مستقیم"""
+        """
+        دریافت قیمت چند ارز با POST
+        """
         if not symbols:
             return {}
         
-        try:
-            self._rate_limit('stats')
-            
-            # تنظیم هدر Host برای Stats
-            self.session.headers.update({"Host": "api.nobitex.ir"})
-            
-            url = f"{self.base_url_stats}/v2/market/stats"
-            
-            src_currency = ",".join(symbols)
-            params = {
-                'srcCurrency': src_currency,
-                'dstCurrency': 'USDT'
-            }
-            
-            response = self.session.get(
-                url, 
-                params=params,
-                timeout=Config.REQUEST_TIMEOUT
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                if data.get('status') == 'ok':
-                    stats = data.get('stats', {})
-                    prices = {}
-                    
-                    for symbol in symbols:
-                        market_key = f"{symbol.lower()}-usdt"
-                        ticker = stats.get(market_key, {})
-                        price = float(ticker.get('latest', 0))
-                        prices[symbol] = price if price > 0 else None
-                    
-                    return prices
-                else:
-                    logger.error(f"❌ API Error getting multiple prices: {data}")
-                    return {}
-            else:
-                logger.error(f"❌ HTTP Error {response.status_code} getting multiple prices")
-                return {}
-                
-        except Exception as e:
-            logger.error(f"❌ Error getting multiple prices: {e}")
-            return {}
+        # POST برای هر ارز جداگانه (مثل ربات قبلی)
+        prices = {}
+        for symbol in symbols:
+            price = self.get_current_price(symbol)
+            prices[symbol] = price
+        
+        return prices
     
     def clear_cache(self):
         """پاک کردن کش"""
