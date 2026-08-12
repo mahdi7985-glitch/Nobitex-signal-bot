@@ -20,27 +20,38 @@ logger = logging.getLogger(__name__)
 class NobitexDataFetcher:
     """
     دریافت داده از API نوبیتکس
-    مطابق با مستندات رسمی: https://apiv2.nobitex.ir
+    مطابق با مستندات رسمی: https://api.nobitex.ir
     """
     
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or Config.NOBITEX_API_KEY
-        
+    def __init__(self):
         # =========================
-        # آدرس API یکدست (بر اساس مستندات فعلی)
+        # آدرس‌های API بر اساس مستندات فعلی
         # =========================
-        self.base_url = "https://apiv2.nobitex.ir"
+        self.base_url_public = "https://apiv2.nobitex.ir"  # برای OHLC (UDF)
+        self.base_url_stats = "https://api.nobitex.ir"     # برای Stats (بدون /v2)
         
         self.session = requests.Session()
-        if self.api_key:
-            self.session.headers.update({
-                "X-API-Key": self.api_key,
-                "Content-Type": "application/json"
-            })
+        self.session.headers.update({
+            "Content-Type": "application/json"
+        })
         
         self.cache = {}
-        self.last_request_time = 0
-        self.min_request_interval = 0.3  # 300ms بین درخواست‌ها
+        
+        # =========================
+        # Rate Limit برای هر endpoint
+        # =========================
+        # Stats: 20 درخواست در دقیقه → حداقل 3 ثانیه بین درخواست‌ها
+        # UDF: محدودیت بالاتر، اما برای احتیاط 1 ثانیه
+        self.rate_limits = {
+            'stats': {
+                'min_interval': 3.0,      # 3 ثانیه بین درخواست‌ها (20 درخواست/دقیقه)
+                'last_request_time': 0
+            },
+            'udf': {
+                'min_interval': 1.0,      # 1 ثانیه بین درخواست‌ها (محافظه‌کارانه)
+                'last_request_time': 0
+            }
+        }
         
         # =========================
         # تبدیل تایم‌فریم به فرمت نوبیتکس
@@ -58,37 +69,30 @@ class NobitexDataFetcher:
             "1M": "M"
         }
         
-    def _rate_limit(self):
-        """مدیریت نرخ درخواست‌ها"""
+    def _rate_limit(self, endpoint_type: str = 'udf'):
+        """
+        مدیریت نرخ درخواست‌ها بر اساس نوع endpoint
+        
+        Args:
+            endpoint_type: 'udf' یا 'stats'
+        """
+        if endpoint_type not in self.rate_limits:
+            endpoint_type = 'udf'
+        
+        limit = self.rate_limits[endpoint_type]
         now = time.time()
-        time_since_last = now - self.last_request_time
-        if time_since_last < self.min_request_interval:
-            time.sleep(self.min_request_interval - time_since_last)
-        self.last_request_time = time.time()
+        time_since_last = now - limit['last_request_time']
+        
+        if time_since_last < limit['min_interval']:
+            sleep_time = limit['min_interval'] - time_since_last
+            logger.debug(f"Rate limit: sleeping {sleep_time:.2f}s for {endpoint_type}")
+            time.sleep(sleep_time)
+        
+        limit['last_request_time'] = time.time()
     
     def _get_nobitex_symbol(self, symbol: str) -> Optional[str]:
-        """تبدیل اسم ارز به فرمت نوبیتکس (USDT)"""
+        """تبدیل اسم ارز به فرمت نوبیتکس (USDT) از Config"""
         return Config.NOBITEX_SYMBOL_MAP.get(symbol)
-    
-    def _get_market_key(self, symbol: str) -> Optional[str]:
-        """
-        تبدیل اسم ارز به کلید بازار نوبیتکس برای Stats
-        مثال: BTCUSDT → btc-usdt, 1000SHIBUSDT → 1000shib-usdt
-        """
-        nobitex_symbol = self._get_nobitex_symbol(symbol)
-        if not nobitex_symbol:
-            return None
-        return nobitex_symbol.lower().replace("usdt", "-usdt")
-    
-    def _get_src_currency(self, symbol: str) -> Optional[str]:
-        """
-        دریافت srcCurrency برای Stats
-        مثال: BTCUSDT → btc, 1000SHIBUSDT → 1000shib
-        """
-        nobitex_symbol = self._get_nobitex_symbol(symbol)
-        if not nobitex_symbol:
-            return None
-        return nobitex_symbol.lower().replace("usdt", "")
     
     def _get_resolution(self, timeframe: str) -> Optional[str]:
         """تبدیل تایم‌فریم به فرمت نوبیتکس"""
@@ -107,7 +111,7 @@ class NobitexDataFetcher:
         Args:
             symbol: اسم ارز (مثل BTC)
             timeframe: تایم‌فریم (مثل 15m, 1h, 4h, 1d)
-            limit: تعداد کندل‌ها
+            limit: تعداد کندل‌ها (حداکثر 500)
             
         Returns:
             DataFrame با ستون‌های: timestamp, open, high, low, close, volume
@@ -145,8 +149,8 @@ class NobitexDataFetcher:
             # =========================
             # ۴. درخواست به API نوبیتکس با to + countback
             # =========================
-            self._rate_limit()
-            url = f"{self.base_url}/market/udf/history"
+            self._rate_limit('udf')
+            url = f"{self.base_url_public}/market/udf/history"
             params = {
                 'symbol': nobitex_symbol,
                 'resolution': resolution,
@@ -200,17 +204,29 @@ class NobitexDataFetcher:
                     df = df.dropna()
                     
                     # =========================
-                    # ۶. بررسی تعداد کندل‌ها (حداقل ۲۰۰ برای EMA200)
+                    # ۶. بررسی تعداد کندل‌ها
+                    # حداقل مورد نیاز برای اندیکاتورها:
+                    # - EMA_TREND = 200
+                    # - MACD_SLOW = 26
+                    # - ATR = 14
+                    # - ADX = 14
+                    # با حاشیه امن 50 کندل اضافی
                     # =========================
-                    if len(df) < 200:
-                        logger.warning(f"⚠️ Insufficient data for {symbol}: {len(df)} candles (need 200)")
+                    min_required = max(Config.EMA_TREND, 200) + 50  # 250
+                    
+                    if len(df) < min_required:
+                        logger.warning(
+                            f"⚠️ Insufficient data for {symbol}: "
+                            f"{len(df)} candles (need at least {min_required})"
+                        )
                         return None
+                    
+                    logger.info(f"✅ Fetched {len(df)} candles for {symbol}")
                     
                     # ذخیره در کش
                     if Config.ENABLE_CACHE:
                         self.cache[cache_key] = (datetime.now(), df.copy())
                     
-                    logger.info(f"✅ Fetched {len(df)} candles for {symbol}")
                     return df
                     
                 else:
@@ -234,7 +250,7 @@ class NobitexDataFetcher:
     def get_current_price(self, symbol: str) -> Optional[float]:
         """
         دریافت قیمت لحظه‌ای از نوبیتکس
-        از endpoint: https://apiv2.nobitex.ir/market/stats
+        از endpoint: https://api.nobitex.ir/market/stats
         
         Args:
             symbol: اسم ارز (مثل BTC)
@@ -242,19 +258,20 @@ class NobitexDataFetcher:
         Returns:
             قیمت لحظه‌ای یا None در صورت خطا
         """
-        src_currency = self._get_src_currency(symbol)
-        market_key = self._get_market_key(symbol)
-        
-        if not src_currency or not market_key:
-            logger.warning(f"⚠️ Symbol {symbol} not found in mapping")
+        nobitex_symbol = self._get_nobitex_symbol(symbol)
+        if not nobitex_symbol:
             return None
         
+        # =========================
+        # قیمت لحظه‌ای کش نمی‌شود (برای دقت سیگنال)
+        # =========================
         try:
-            self._rate_limit()
-            url = f"{self.base_url}/market/stats"
+            self._rate_limit('stats')
+            url = f"{self.base_url_stats}/market/stats"
             
+            # طبق مستندات نوبیتکس
             params = {
-                'srcCurrency': src_currency,
+                'srcCurrency': symbol,
                 'dstCurrency': 'USDT'
             }
             
@@ -269,6 +286,9 @@ class NobitexDataFetcher:
                 
                 if data.get('status') == 'ok':
                     stats = data.get('stats', {})
+                    
+                    # کلید بازار به فرمت مثلاً btc-usdt
+                    market_key = f"{symbol.lower()}-usdt"
                     ticker = stats.get(market_key, {})
                     price = float(ticker.get('latest', 0))
                     
@@ -291,7 +311,6 @@ class NobitexDataFetcher:
     def get_multiple_prices(self, symbols: List[str]) -> Dict[str, Optional[float]]:
         """
         دریافت قیمت چند ارز به صورت همزمان با یک درخواست
-        از endpoint: https://apiv2.nobitex.ir/market/stats
         
         Args:
             symbols: لیست اسم ارزها
@@ -302,32 +321,16 @@ class NobitexDataFetcher:
         if not symbols:
             return {}
         
-        # =========================
-        # ۱. ساخت srcCurrency ها و market_key ها از Mapping
-        # =========================
-        src_currencies = []
-        market_keys = {}
-        
-        for symbol in symbols:
-            src = self._get_src_currency(symbol)
-            mkey = self._get_market_key(symbol)
-            
-            if src and mkey:
-                src_currencies.append(src)
-                market_keys[symbol] = mkey
-            else:
-                logger.warning(f"⚠️ Symbol {symbol} not found in mapping")
-                market_keys[symbol] = None
-        
-        if not src_currencies:
-            return {}
-        
         try:
-            self._rate_limit()
-            url = f"{self.base_url}/market/stats"
+            self._rate_limit('stats')
+            url = f"{self.base_url_stats}/market/stats"
             
+            # =========================
+            # ارسال تمام ارزها به صورت comma-separated
+            # =========================
+            src_currency = ",".join(symbols)
             params = {
-                'srcCurrency': ",".join(src_currencies),
+                'srcCurrency': src_currency,
                 'dstCurrency': 'USDT'
             }
             
@@ -345,13 +348,10 @@ class NobitexDataFetcher:
                     prices = {}
                     
                     for symbol in symbols:
-                        market_key = market_keys.get(symbol)
-                        if market_key:
-                            ticker = stats.get(market_key, {})
-                            price = float(ticker.get('latest', 0))
-                            prices[symbol] = price if price > 0 else None
-                        else:
-                            prices[symbol] = None
+                        market_key = f"{symbol.lower()}-usdt"
+                        ticker = stats.get(market_key, {})
+                        price = float(ticker.get('latest', 0))
+                        prices[symbol] = price if price > 0 else None
                     
                     return prices
                 else:
