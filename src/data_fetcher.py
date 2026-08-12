@@ -23,14 +23,15 @@ class NobitexDataFetcher:
     
     def __init__(self):
         # =========================
-        # آدرس‌های API (حالت عادی)
+        # آدرس‌های API با IP مستقیم
         # =========================
-        self.base_url_public = "https://apiv2.nobitex.ir"
-        self.base_url_stats = "https://api.nobitex.ir"
+        self.base_url_public = "https://185.165.190.10"
+        self.base_url_stats = "https://185.165.190.10"
         
         self.session = requests.Session()
         self.session.headers.update({
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Host": "api.nobitex.ir"
         })
         
         self.cache = {}
@@ -114,6 +115,10 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('udf')
+            
+            # تنظیم هدر Host برای UDF
+            self.session.headers.update({"Host": "apiv2.nobitex.ir"})
+            
             url = f"{self.base_url_public}/market/udf/history"
             params = {
                 'symbol': nobitex_symbol,
@@ -198,7 +203,11 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('stats')
-            url = f"{self.base_url_stats}/market/stats"
+            
+            # تنظیم هدر Host برای Stats
+            self.session.headers.update({"Host": "api.nobitex.ir"})
+            
+            url = f"{self.base_url_stats}/v2/market/stats"
             
             params = {
                 'srcCurrency': symbol,
@@ -243,7 +252,11 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('stats')
-            url = f"{self.base_url_stats}/market/stats"
+            
+            # تنظیم هدر Host برای Stats
+            self.session.headers.update({"Host": "api.nobitex.ir"})
+            
+            url = f"{self.base_url_stats}/v2/market/stats"
             
             src_currency = ",".join(symbols)
             params = {
