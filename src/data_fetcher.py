@@ -31,7 +31,7 @@ class NobitexDataFetcher:
         self.session = requests.Session()
         self.session.headers.update({
             "Content-Type": "application/json",
-            "Host": "api.nobitex.ir"
+            "Host": "apiv2.nobitex.ir"
         })
         
         self.cache = {}
@@ -115,10 +115,6 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('udf')
-            
-            # تنظیم هدر Host برای UDF
-            self.session.headers.update({"Host": "apiv2.nobitex.ir"})
-            
             url = f"{self.base_url_public}/market/udf/history"
             params = {
                 'symbol': nobitex_symbol,
@@ -203,10 +199,6 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('stats')
-            
-            # تنظیم هدر Host برای Stats
-            self.session.headers.update({"Host": "api.nobitex.ir"})
-            
             url = f"{self.base_url_stats}/v2/market/stats"
             
             params = {
@@ -252,10 +244,6 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('stats')
-            
-            # تنظیم هدر Host برای Stats
-            self.session.headers.update({"Host": "api.nobitex.ir"})
-            
             url = f"{self.base_url_stats}/v2/market/stats"
             
             src_currency = ",".join(symbols)
