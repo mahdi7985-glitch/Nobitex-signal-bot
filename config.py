@@ -29,6 +29,13 @@ class Config:
         dir_path.mkdir(exist_ok=True)
 
     # =========================
+    # LOGGING
+    # =========================
+    LOG_LEVEL = "INFO"
+    LOG_FILE = LOGS_DIR / "crypto_bot.log"
+    LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+    # =========================
     # API KEYS (از .env)
     # =========================
     NOBITEX_API_KEY = os.getenv("NOBITEX_API_KEY")
@@ -42,7 +49,7 @@ class Config:
     AI_REQUIRED = os.getenv("AI_REQUIRED", "false").lower() == "true"
 
     # =========================
-    # SYMBOLS (فقط ارزهای قابل معامله - USDT حذف شد)
+    # SYMBOLS
     # =========================
     SYMBOLS = {
         "BTC": "Bitcoin",
@@ -76,7 +83,7 @@ class Config:
     }
 
     # =========================
-    # NOBITEX SYMBOL MAPPING (فرمت بدون خط تیره - مطابق با UDF)
+    # NOBITEX SYMBOL MAPPING
     # =========================
     NOBITEX_SYMBOL_MAP = {
         "BTC": "BTCUSDT",
@@ -116,7 +123,7 @@ class Config:
 
     @classmethod
     def get_active_symbols(cls):
-        """بازگرداندن لیست ارزهای فعال با بررسی وجود در Nobitex"""
+        """بازگرداندن لیست ارزهای فعال"""
         active = []
         for symbol in cls.SYMBOLS.keys():
             if symbol in cls.DISABLED_SYMBOLS:
@@ -147,8 +154,8 @@ class Config:
     EMA_SLOW = 50
     EMA_TREND = 200
 
-    SMA_FAST = 20   # ✅ اضافه شد
-    SMA_SLOW = 50   # ✅ اضافه شد
+    SMA_FAST = 20
+    SMA_SLOW = 50
 
     MACD_FAST = 12
     MACD_SLOW = 26
@@ -398,8 +405,3 @@ class Config:
         ✅ Risk per Trade: {cls.ATR_SL_MULTIPLIER}x ATR
         ===================================
         """
-
-
-# =========================
-# اعتبارسنجی در main.py انجام می‌شود
-# =========================
