@@ -8,115 +8,39 @@ on:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    
     steps:
-
-      # ========================================
-      # مرحله ۱: تنظیم DNS برای دسترسی به نوبیتکس
-      # ========================================
-      - name: Fix DNS for Nobitex
-        run: |
-          echo "========================================"
-          echo "🌐 تنظیم DNS برای نوبیتکس"
-          echo "========================================"
-
-          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
-          echo "nameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
-
-          echo ""
-          echo "📋 DNS فعلی:"
-          cat /etc/resolv.conf
-
-          echo ""
-          echo "🔎 تست DNS api.nobitex.ir:"
-          getent hosts api.nobitex.ir || true
-
-          echo ""
-          echo "🔎 تست DNS apiv2.nobitex.ir:"
-          getent hosts apiv2.nobitex.ir || true
-
-          echo ""
-          echo "🌐 تست اتصال HTTPS:"
-          curl -I --connect-timeout 10 --max-time 15 \
-            https://api.nobitex.ir || true
-
-          echo ""
-          echo "🌐 تست اتصال HTTPS به apiv2:"
-          curl -I --connect-timeout 10 --max-time 15 \
-            https://apiv2.nobitex.ir || true
-
-          echo ""
-          echo "✅ مرحله DNS تمام شد"
-
-      # ========================================
-      # مرحله ۲: دریافت پروژه
-      # ========================================
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # ========================================
-      # مرحله ۳: نصب Python
-      # ========================================
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      # ========================================
-      # مرحله ۴: نصب وابستگی‌ها
-      # ========================================
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      # ========================================
-      # مرحله ۵: ایجاد دایرکتوری‌ها
-      # ========================================
-      - name: Create directories
-        run: |
-          mkdir -p data
-          mkdir -p data/history
-          mkdir -p data/signals
-          mkdir -p cache
-          mkdir -p logs
-
-      # ========================================
-      # مرحله ۶: نمایش وضعیت DNS قبل از اجرای ربات
-      # ========================================
-      - name: Verify Nobitex DNS
-        run: |
-          echo "========================================"
-          echo "🔎 بررسی نهایی اتصال به نوبیتکس"
-          echo "========================================"
-
-          getent hosts api.nobitex.ir || true
-          getent hosts apiv2.nobitex.ir || true
-
-      # ========================================
-      # مرحله ۷: اجرای ربات
-      # ========================================
-      - name: Run Crypto Signal Bot
-        env:
-          ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
-          NOBITEX_API_KEY: ${{ secrets.NOBITEX_API_KEY }}
-          BALE_BOT_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
-          BALE_CHAT_ID: ${{ secrets.BALE_CHAT_ID }}
-          AI_API_KEY: ${{ secrets.AI_API_KEY }}
-          AI_MODEL: ${{ secrets.AI_MODEL || 'gpt-3.5-turbo' }}
-          TEST_MODE: false
-          LOG_LEVEL: INFO
-        run: |
-          python run.py --once
-
-      # ========================================
-      # مرحله ۸: ذخیره لاگ‌ها
-      # ========================================
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: crypto-bot-logs
-          path: logs/
-          if-no-files-found: ignore
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+    
+    - name: Create directories
+      run: |
+        mkdir -p data/logs data/cache data/history data/signals
+    
+    - name: Run Crypto Signal Bot
+      env:
+        NOBITEX_API_KEY: ${{ secrets.NOBITEX_API_KEY }}
+        BALE_BOT_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
+        BALE_CHAT_ID: ${{ secrets.BALE_CHAT_ID }}
+        AI_API_KEY: ${{ secrets.AI_API_KEY }}
+        AI_MODEL: ${{ secrets.AI_MODEL || 'gpt-3.5-turbo' }}
+        TEST_MODE: ${{ secrets.TEST_MODE || 'false' }}
+        LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'INFO' }}
+      run: |
+        python run.py --once
+    
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: logs
+        path: data/logs/
