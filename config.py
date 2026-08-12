@@ -39,7 +39,7 @@ class Config:
     AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")
     AI_MODEL = os.getenv("AI_MODEL", "gpt-3.5-turbo")
     AI_API_KEY = os.getenv("AI_API_KEY")
-    AI_REQUIRED = os.getenv("AI_REQUIRED", "false").lower() == "true"  # ✅ فقط یک بار
+    AI_REQUIRED = os.getenv("AI_REQUIRED", "false").lower() == "true"
 
     # =========================
     # SYMBOLS (فقط ارزهای قابل معامله - USDT حذف شد)
@@ -147,6 +147,9 @@ class Config:
     EMA_SLOW = 50
     EMA_TREND = 200
 
+    SMA_FAST = 20   # ✅ اضافه شد
+    SMA_SLOW = 50   # ✅ اضافه شد
+
     MACD_FAST = 12
     MACD_SLOW = 26
     MACD_SIGNAL = 9
@@ -250,7 +253,6 @@ class Config:
     # AI ANALYSIS
     # =========================
     ENABLE_AI_ANALYSIS = True
-    # AI_REQUIRED قبلاً از .env خوانده شده است
 
     AI_MAX_NEWS_ITEMS = 10
     AI_TIMEOUT = 30
