@@ -73,10 +73,10 @@ class TechnicalIndicators:
             indicators['ema_trend'] = self.calculate_ema(df, self.config.EMA_TREND)
             
             # =========================
-            # SMA
+            # SMA (از Config خوانده می‌شود)
             # =========================
-            indicators['sma_fast'] = self.calculate_sma(df, 20)
-            indicators['sma_slow'] = self.calculate_sma(df, 50)
+            indicators['sma_fast'] = self.calculate_sma(df, self.config.SMA_FAST)
+            indicators['sma_slow'] = self.calculate_sma(df, self.config.SMA_SLOW)
             
             # =========================
             # MACD
