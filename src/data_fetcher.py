@@ -23,10 +23,13 @@ class NobitexDataFetcher:
     
     def __init__(self):
         # =========================
-        # آدرس‌های API (حالت عادی)
+        # آدرس‌های API (ترکیبی)
         # =========================
+        # UDF: با دامنه (که کار میکنه)
         self.base_url_public = "https://apiv2.nobitex.ir"
-        self.base_url_stats = "https://api.nobitex.ir"
+        
+        # Stats: با IP مستقیم (برای حل مشکل DNS)
+        self.base_url_stats = "https://185.165.190.10"
         
         self.session = requests.Session()
         self.session.headers.update({
@@ -191,14 +194,18 @@ class NobitexDataFetcher:
             return None
     
     def get_current_price(self, symbol: str) -> Optional[float]:
-        """دریافت قیمت لحظه‌ای"""
+        """دریافت قیمت لحظه‌ای با IP مستقیم"""
         nobitex_symbol = self._get_nobitex_symbol(symbol)
         if not nobitex_symbol:
             return None
         
         try:
             self._rate_limit('stats')
-            url = f"{self.base_url_stats}/market/stats"
+            
+            # تنظیم هدر Host برای Stats
+            self.session.headers.update({"Host": "api.nobitex.ir"})
+            
+            url = f"{self.base_url_stats}/v2/market/stats"
             
             params = {
                 'srcCurrency': symbol,
@@ -237,13 +244,17 @@ class NobitexDataFetcher:
             return None
     
     def get_multiple_prices(self, symbols: List[str]) -> Dict[str, Optional[float]]:
-        """دریافت قیمت چند ارز به صورت همزمان"""
+        """دریافت قیمت چند ارز به صورت همزمان با IP مستقیم"""
         if not symbols:
             return {}
         
         try:
             self._rate_limit('stats')
-            url = f"{self.base_url_stats}/market/stats"
+            
+            # تنظیم هدر Host برای Stats
+            self.session.headers.update({"Host": "api.nobitex.ir"})
+            
+            url = f"{self.base_url_stats}/v2/market/stats"
             
             src_currency = ",".join(symbols)
             params = {
