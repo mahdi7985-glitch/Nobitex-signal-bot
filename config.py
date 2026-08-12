@@ -39,7 +39,7 @@ class Config:
     AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")
     AI_MODEL = os.getenv("AI_MODEL", "gpt-3.5-turbo")
     AI_API_KEY = os.getenv("AI_API_KEY")
-    AI_REQUIRED = os.getenv("AI_REQUIRED", "false").lower() == "true"  # ✅ فقط یک بار
+    AI_REQUIRED = os.getenv("AI_REQUIRED", "false").lower() == "true"
 
     # =========================
     # SYMBOLS (فقط ارزهای قابل معامله)
@@ -58,7 +58,7 @@ class Config:
         "ZEC": "Zcash",
         "CRV": "Curve DAO",
         "DEXE": "DeXe",
-        "SHIB": "1000SHIB",  # ✅ اصلاح شد - 1000SHIB
+        "SHIB": "1000SHIB",
         "GRAM": "Gram",
         "BICO": "Biconomy",
         "DEFI": "DeFi App",
@@ -71,42 +71,42 @@ class Config:
         "HMSTR": "Hamster",
         "DOGS": "DOGS",
         "COOKIE": "COOKIE",
-        "XAUT": "Tether Gold",   # ✅ اضافه شد
-        "PAXG": "Pax Gold",      # ✅ اضافه شد
+        "XAUT": "Tether Gold",
+        "PAXG": "Pax Gold",
     }
 
     # =========================
-    # NOBITEX SYMBOL MAPPING (کامل شده)
+    # NOBITEX SYMBOL MAPPING (فرمت بدون خط تیره - مطابق با UDF)
     # =========================
     NOBITEX_SYMBOL_MAP = {
-        "BTC": "BTC-USDT",
-        "ETH": "ETH-USDT",
-        "DOGE": "DOGE-USDT",
-        "SOL": "SOL-USDT",
-        "XRP": "XRP-USDT",
-        "ADA": "ADA-USDT",
-        "TRX": "TRX-USDT",
-        "ATOM": "ATOM-USDT",
-        "DOT": "DOT-USDT",
-        "XLM": "XLM-USDT",
-        "ZEC": "ZEC-USDT",
-        "CRV": "CRV-USDT",
-        "DEXE": "DEXE-USDT",
-        "SHIB": "1000SHIB-USDT",  # ✅ اصلاح شد
-        "GRAM": "GRAM-USDT",
-        "BICO": "BICO-USDT",
-        "DEFI": "DEFI-USDT",
-        "APT": "APT-USDT",
-        "CRO": "CRO-USDT",
-        "PUMP": "PUMP-USDT",
-        "HOME": "HOME-USDT",
-        "PROM": "PROM-USDT",
-        "BANK": "BANK-USDT",
-        "HMSTR": "HMSTR-USDT",
-        "DOGS": "DOGS-USDT",
-        "COOKIE": "COOKIE-USDT",
-        "XAUT": "XAUT-USDT",     # ✅ اضافه شد
-        "PAXG": "PAXG-USDT",     # ✅ اضافه شد
+        "BTC": "BTCUSDT",
+        "ETH": "ETHUSDT",
+        "DOGE": "DOGEUSDT",
+        "SOL": "SOLUSDT",
+        "XRP": "XRPUSDT",
+        "ADA": "ADAUSDT",
+        "TRX": "TRXUSDT",
+        "ATOM": "ATOMUSDT",
+        "DOT": "DOTUSDT",
+        "XLM": "XLMUSDT",
+        "ZEC": "ZECUSDT",
+        "CRV": "CRVUSDT",
+        "DEXE": "DEXEUSDT",
+        "SHIB": "1000SHIBUSDT",
+        "GRAM": "GRAMUSDT",
+        "BICO": "BICOUSDT",
+        "DEFI": "DEFIUSDT",
+        "APT": "APTUSDT",
+        "CRO": "CROUSDT",
+        "PUMP": "PUMPUSDT",
+        "HOME": "HOMEUSDT",
+        "PROM": "PROMUSDT",
+        "BANK": "BANKUSDT",
+        "HMSTR": "HMSTRUSDT",
+        "DOGS": "DOGSUSDT",
+        "COOKIE": "COOKIEUSDT",
+        "XAUT": "XAUTUSDT",
+        "PAXG": "PAXGUSDT",
     }
 
     # =========================
@@ -181,7 +181,7 @@ class Config:
     VERY_LOW_VOLUME_RATIO = 0.3
 
     # =========================
-    # SIGNAL SCORING (اصلاح شده با نام‌گذاری واضح)
+    # SIGNAL SCORING
     # =========================
     WEIGHTS = {
         "trend": 20,
@@ -193,15 +193,13 @@ class Config:
         "support_resistance": 10,
     }
 
-    # سطوح امتیاز با نام‌گذاری واضح
-    MIN_SIGNAL_SCORE = 60          # حداقل امتیاز برای سیگنال
-    WEAK_SIGNAL_SCORE = 60         # 60-69: سیگنال ضعیف
-    NORMAL_SIGNAL_SCORE = 70       # 70-79: سیگنال معمولی
-    STRONG_SIGNAL_SCORE = 80       # 80-84: سیگنال قوی
-    VERY_STRONG_SIGNAL_SCORE = 85  # 85-89: سیگنال خیلی قوی
-    EXCEPTIONAL_SIGNAL_SCORE = 90  # 90+: موقعیت استثنایی
+    MIN_SIGNAL_SCORE = 60
+    WEAK_SIGNAL_SCORE = 60
+    NORMAL_SIGNAL_SCORE = 70
+    STRONG_SIGNAL_SCORE = 80
+    VERY_STRONG_SIGNAL_SCORE = 85
+    EXCEPTIONAL_SIGNAL_SCORE = 90
 
-    # شرط‌های استثنایی برای عبور از حداقل امتیاز
     EXCEPTIONAL_CONDITIONS = {
         "breakout_with_volume": True,
         "macd_strong_momentum": True,
@@ -243,7 +241,7 @@ class Config:
     # AI ANALYSIS
     # =========================
     ENABLE_AI_ANALYSIS = True
-    AI_REQUIRED = False  # ✅ فقط اینجا مقداردهی شده، خط قبلی حذف شد
+    AI_REQUIRED = False
 
     AI_MAX_NEWS_ITEMS = 10
     AI_TIMEOUT = 30
@@ -346,7 +344,6 @@ class Config:
         if total_weight != 100:
             warnings.append(f"Total weight is {total_weight}, should be 100")
 
-        # بررسی سطوح امتیاز
         if not (cls.MIN_SIGNAL_SCORE < cls.NORMAL_SIGNAL_SCORE < cls.STRONG_SIGNAL_SCORE):
             errors.append("SCORE levels must be in increasing order")
 
