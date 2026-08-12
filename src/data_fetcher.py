@@ -23,15 +23,14 @@ class NobitexDataFetcher:
     
     def __init__(self):
         # =========================
-        # آدرس‌های API با IP مستقیم
+        # آدرس‌های API (حالت عادی)
         # =========================
-        self.base_url_public = "https://185.165.190.10"  # IP برای apiv2.nobitex.ir
-        self.base_url_stats = "https://185.165.190.10"   # IP برای api.nobitex.ir
+        self.base_url_public = "https://apiv2.nobitex.ir"
+        self.base_url_stats = "https://api.nobitex.ir"
         
         self.session = requests.Session()
         self.session.headers.update({
-            "Content-Type": "application/json",
-            "Host": "api.nobitex.ir"  # ✅ هدر Host رو برای همه درخواست‌ها تنظیم می‌کنیم
+            "Content-Type": "application/json"
         })
         
         self.cache = {}
@@ -84,14 +83,6 @@ class NobitexDataFetcher:
     def _get_resolution(self, timeframe: str) -> Optional[str]:
         return self.resolution_map.get(timeframe)
     
-    def _get_endpoint_url(self, endpoint: str) -> str:
-        """ساخت URL با IP و اصلاح مسیر"""
-        # برای /market/stats از مسیر /v2/market/stats استفاده میکنیم
-        if endpoint == "stats":
-            return f"{self.base_url_stats}/v2/market/stats"
-        # برای UDF
-        return f"{self.base_url_public}/market/udf/history"
-    
     def get_ohlcv(
         self, 
         symbol: str, 
@@ -123,11 +114,7 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('udf')
-            url = self._get_endpoint_url("udf")
-            
-            # تنظیم هدر Host برای این درخواست خاص
-            self.session.headers.update({"Host": "apiv2.nobitex.ir"})
-            
+            url = f"{self.base_url_public}/market/udf/history"
             params = {
                 'symbol': nobitex_symbol,
                 'resolution': resolution,
@@ -211,10 +198,7 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('stats')
-            url = self._get_endpoint_url("stats")
-            
-            # تنظیم هدر Host برای این درخواست خاص
-            self.session.headers.update({"Host": "api.nobitex.ir"})
+            url = f"{self.base_url_stats}/market/stats"
             
             params = {
                 'srcCurrency': symbol,
@@ -259,10 +243,7 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('stats')
-            url = self._get_endpoint_url("stats")
-            
-            # تنظیم هدر Host برای این درخواست خاص
-            self.session.headers.update({"Host": "api.nobitex.ir"})
+            url = f"{self.base_url_stats}/market/stats"
             
             src_currency = ",".join(symbols)
             params = {
