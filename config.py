@@ -70,7 +70,6 @@ class Config:
         "BICO": "Biconomy",
         "DEFI": "DeFi App",
         "APT": "Aptos",
-        "CRO": "Cronos",
         "PUMP": "Pump",
         "HOME": "Home",
         "PROM": "Prom",
@@ -83,7 +82,7 @@ class Config:
     }
 
     # =========================
-    # NOBITEX SYMBOL MAPPING
+    # NOBITEX SYMBOL MAPPING (فرمت بدون خط تیره - مطابق با UDF)
     # =========================
     NOBITEX_SYMBOL_MAP = {
         "BTC": "BTCUSDT",
@@ -99,12 +98,11 @@ class Config:
         "ZEC": "ZECUSDT",
         "CRV": "CRVUSDT",
         "DEXE": "DEXEUSDT",
-        "SHIB": "1000SHIBUSDT",
+        "SHIB": "1K_SHIBUSDT",
         "GRAM": "GRAMUSDT",
         "BICO": "BICOUSDT",
         "DEFI": "DEFIUSDT",
         "APT": "APTUSDT",
-        "CRO": "CROUSDT",
         "PUMP": "PUMPUSDT",
         "HOME": "HOMEUSDT",
         "PROM": "PROMUSDT",
@@ -123,7 +121,7 @@ class Config:
 
     @classmethod
     def get_active_symbols(cls):
-        """بازگرداندن لیست ارزهای فعال"""
+        """بازگرداندن لیست ارزهای فعال با بررسی وجود در Nobitex"""
         active = []
         for symbol in cls.SYMBOLS.keys():
             if symbol in cls.DISABLED_SYMBOLS:
@@ -306,7 +304,7 @@ class Config:
     MIN_ACCEPTABLE_RR = 1.5
 
     # =========================
-    # TELEGRAM
+    # SEND SETTINGS
     # =========================
     SEND_BUY_SIGNALS = True
     SEND_SELL_SIGNALS = True
