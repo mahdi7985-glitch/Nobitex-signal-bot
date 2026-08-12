@@ -32,17 +32,17 @@ class Config:
     # API KEYS (از .env)
     # =========================
     NOBITEX_API_KEY = os.getenv("NOBITEX_API_KEY")
-    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-    TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+    BALE_BOT_TOKEN = os.getenv("BALE_BOT_TOKEN")
+    BALE_CHAT_ID = os.getenv("BALE_CHAT_ID")
 
     # AI Settings (قابل تغییر از .env)
     AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")
     AI_MODEL = os.getenv("AI_MODEL", "gpt-3.5-turbo")
     AI_API_KEY = os.getenv("AI_API_KEY")
-    AI_REQUIRED = os.getenv("AI_REQUIRED", "false").lower() == "true"
+    AI_REQUIRED = os.getenv("AI_REQUIRED", "false").lower() == "true"  # ✅ فقط یک بار
 
     # =========================
-    # SYMBOLS (فقط ارزهای قابل معامله)
+    # SYMBOLS (فقط ارزهای قابل معامله - USDT حذف شد)
     # =========================
     SYMBOLS = {
         "BTC": "Bitcoin",
@@ -131,7 +131,7 @@ class Config:
     # TIMEFRAMES
     # =========================
     TIMEFRAME = "15m"
-    CANDLES_LIMIT = 200
+    CANDLES_LIMIT = 300
     HIGHER_TIMEFRAMES = ["1h", "4h", "1d"]
 
     # =========================
@@ -237,11 +237,20 @@ class Config:
 
     NITRIMO_QUICK_LOOK_SELECTOR = ".quick-look, .radar-quick, .summary"
 
+    NEWS_ITEM_SELECTORS = [
+        '.news-item', 
+        '.post-item', 
+        '.article-item', 
+        '.radar-item',
+        '.news-card',
+        '.post-card'
+    ]
+
     # =========================
     # AI ANALYSIS
     # =========================
     ENABLE_AI_ANALYSIS = True
-    AI_REQUIRED = False
+    # AI_REQUIRED قبلاً از .env خوانده شده است
 
     AI_MAX_NEWS_ITEMS = 10
     AI_TIMEOUT = 30
@@ -281,6 +290,11 @@ class Config:
 
     پاسخ را به صورت ساختاریافته و در ۵-۷ خط خلاصه کنید.
     """
+
+    # =========================
+    # RISK MANAGEMENT
+    # =========================
+    MIN_ACCEPTABLE_RR = 1.5
 
     # =========================
     # TELEGRAM
@@ -331,11 +345,11 @@ class Config:
         errors = []
         warnings = []
 
-        if not cls.TELEGRAM_BOT_TOKEN and not cls.TEST_MODE:
-            errors.append("TELEGRAM_BOT_TOKEN is required (or enable TEST_MODE)")
+        if not cls.BALE_BOT_TOKEN and not cls.TEST_MODE:
+            errors.append("BALE_BOT_TOKEN is required (or enable TEST_MODE)")
 
-        if not cls.TELEGRAM_CHAT_ID and not cls.TEST_MODE:
-            errors.append("TELEGRAM_CHAT_ID is required (or enable TEST_MODE)")
+        if not cls.BALE_CHAT_ID and not cls.TEST_MODE:
+            errors.append("BALE_CHAT_ID is required (or enable TEST_MODE)")
 
         if not cls.NOBITEX_API_KEY:
             warnings.append("NOBITEX_API_KEY not set - may have limited access")
@@ -384,6 +398,6 @@ class Config:
         """
 
 
-# اعتبارسنجی خودکار
-if not Config.TEST_MODE:
-    Config.validate()
+# =========================
+# اعتبارسنجی در main.py انجام می‌شود
+# =========================
