@@ -15,7 +15,6 @@ jobs:
         run: |
           echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
           echo "nameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
-          echo "nameserver 185.165.190.10" | sudo tee -a /etc/resolv.conf
 
       - name: Checkout repository
         uses: actions/checkout@v4
