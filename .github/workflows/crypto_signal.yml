@@ -2,45 +2,75 @@ name: Crypto Signal Bot
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # هر ۵ دقیقه
-  workflow_dispatch:       # اجرای دستی
+    - cron: '*/5 * * * *'   # هر ۵ دقیقه
+  workflow_dispatch:          # اجرای دستی
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
-    
-    - name: Create directories
-      run: |
-        mkdir -p data/logs data/cache data/history data/signals
-    
-    - name: Run Crypto Signal Bot
-      env:
-        NOBITEX_API_KEY: ${{ secrets.NOBITEX_API_KEY }}
-        BALE_BOT_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
-        BALE_CHAT_ID: ${{ secrets.BALE_CHAT_ID }}
-        AI_API_KEY: ${{ secrets.AI_API_KEY }}
-        AI_MODEL: ${{ secrets.AI_MODEL || 'gpt-3.5-turbo' }}
-        TEST_MODE: ${{ secrets.TEST_MODE || 'false' }}
-        LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'INFO' }}
-      run: |
-        python run.py --once
-    
-    - name: Upload logs on failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: logs
-        path: data/logs/
+      # =========================
+      # ۱. تنظیم DNS برای دسترسی به نوبیتکس
+      # =========================
+      - name: Fix DNS for Nobitex
+        run: |
+          echo "🌐 Setting DNS..."
+          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+          echo "nameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
+          echo "✅ DNS configured"
+      
+      # =========================
+      # ۲. دریافت کد
+      # =========================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      # =========================
+      # ۳. نصب پایتون
+      # =========================
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      # =========================
+      # ۴. نصب وابستگی‌ها
+      # =========================
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      # =========================
+      # ۵. ایجاد دایرکتوری‌ها
+      # =========================
+      - name: Create directories
+        run: |
+          mkdir -p data/logs data/cache data/history data/signals
+      
+      # =========================
+      # ۶. اجرای ربات
+      # =========================
+      - name: Run Crypto Signal Bot
+        env:
+          NOBITEX_API_KEY: ${{ secrets.NOBITEX_API_KEY }}
+          BALE_BOT_TOKEN: ${{ secrets.BALE_BOT_TOKEN }}
+          BALE_CHAT_ID: ${{ secrets.BALE_CHAT_ID }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MODEL: ${{ secrets.AI_MODEL || 'gpt-3.5-turbo' }}
+          TEST_MODE: ${{ secrets.TEST_MODE || 'false' }}
+          LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'INFO' }}
+        run: |
+          python run.py --once
+      
+      # =========================
+      # ۷. ذخیره لاگ‌ها
+      # =========================
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: data/logs/
