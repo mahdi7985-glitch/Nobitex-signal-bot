@@ -23,10 +23,10 @@ class NobitexDataFetcher:
     
     def __init__(self):
         # =========================
-        # آدرس‌های API
+        # آدرس‌های API (هر دو روی apiv2)
         # =========================
         self.base_url_public = "https://apiv2.nobitex.ir"
-        self.base_url_stats = "https://api.nobitex.ir"  # ✅ برگشت به api.nobitex.ir
+        self.base_url_stats = "https://apiv2.nobitex.ir"  # ✅ تغییر به apiv2
         
         self.session = requests.Session()
         self.session.headers.update({
@@ -193,7 +193,7 @@ class NobitexDataFetcher:
     
     def get_current_price(self, symbol: str) -> Optional[float]:
         """
-        دریافت قیمت لحظه‌ای با GET
+        دریافت قیمت لحظه‌ای با GET روی apiv2
         """
         nobitex_symbol = self._get_nobitex_symbol(symbol)
         if not nobitex_symbol:
@@ -243,7 +243,7 @@ class NobitexDataFetcher:
     
     def get_multiple_prices(self, symbols: List[str]) -> Dict[str, Optional[float]]:
         """
-        دریافت قیمت چند ارز به صورت همزمان با GET
+        دریافت قیمت چند ارز به صورت همزمان با GET روی apiv2
         """
         if not symbols:
             return {}
