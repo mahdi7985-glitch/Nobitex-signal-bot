@@ -68,10 +68,9 @@ class Config:
         "SHIB": "1000SHIB",
         "GRAM": "Gram",
         "BICO": "Biconomy",
-        "DEFI": "DeFi App",
+        "HOME": "Home",        # ✅ DEFI حذف و HOME اضافه شد
         "APT": "Aptos",
         "PUMP": "Pump",
-        "HOME": "Home",
         "PROM": "Prom",
         "BANK": "Bank",
         "HMSTR": "Hamster",
@@ -82,7 +81,7 @@ class Config:
     }
 
     # =========================
-    # NOBITEX SYMBOL MAPPING (فرمت بدون خط تیره - مطابق با UDF)
+    # NOBITEX SYMBOL MAPPING
     # =========================
     NOBITEX_SYMBOL_MAP = {
         "BTC": "BTCUSDT",
@@ -101,10 +100,9 @@ class Config:
         "SHIB": "1K_SHIBUSDT",
         "GRAM": "GRAMUSDT",
         "BICO": "BICOUSDT",
-        "DEFI": "DEFIUSDT",
+        "HOME": "HOMEUSDT",    # ✅ DEFI حذف و HOME اضافه شد
         "APT": "APTUSDT",
         "PUMP": "PUMPUSDT",
-        "HOME": "HOMEUSDT",
         "PROM": "PROMUSDT",
         "BANK": "BANKUSDT",
         "HMSTR": "HMSTRUSDT",
