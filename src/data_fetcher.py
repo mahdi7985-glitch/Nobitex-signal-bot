@@ -23,15 +23,14 @@ class NobitexDataFetcher:
     
     def __init__(self):
         # =========================
-        # آدرس‌های API با IP مستقیم
+        # آدرس‌های API (حالت عادی)
         # =========================
-        self.base_url_public = "https://185.165.190.10"
-        self.base_url_stats = "https://185.165.190.10"
+        self.base_url_public = "https://apiv2.nobitex.ir"
+        self.base_url_stats = "https://api.nobitex.ir"
         
         self.session = requests.Session()
         self.session.headers.update({
-            "Content-Type": "application/json",
-            "Host": "apiv2.nobitex.ir"
+            "Content-Type": "application/json"
         })
         
         self.cache = {}
@@ -199,7 +198,7 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('stats')
-            url = f"{self.base_url_stats}/v2/market/stats"
+            url = f"{self.base_url_stats}/market/stats"
             
             params = {
                 'srcCurrency': symbol,
@@ -244,7 +243,7 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('stats')
-            url = f"{self.base_url_stats}/v2/market/stats"
+            url = f"{self.base_url_stats}/market/stats"
             
             src_currency = ",".join(symbols)
             params = {
