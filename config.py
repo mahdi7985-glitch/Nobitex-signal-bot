@@ -68,9 +68,10 @@ class Config:
         "SHIB": "1000SHIB",
         "GRAM": "Gram",
         "BICO": "Biconomy",
-        "HOME": "Home",
+        "DEFI": "DeFi App",
         "APT": "Aptos",
         "PUMP": "Pump",
+        "HOME": "Home",
         "PROM": "Prom",
         "BANK": "Bank",
         "HMSTR": "Hamster",
@@ -81,7 +82,7 @@ class Config:
     }
 
     # =========================
-    # NOBITEX SYMBOL MAPPING
+    # NOBITEX SYMBOL MAPPING (فرمت بدون خط تیره - مطابق با UDF)
     # =========================
     NOBITEX_SYMBOL_MAP = {
         "BTC": "BTCUSDT",
@@ -100,9 +101,10 @@ class Config:
         "SHIB": "1K_SHIBUSDT",
         "GRAM": "GRAMUSDT",
         "BICO": "BICOUSDT",
-        "HOME": "HOMEUSDT",
+        "DEFI": "DEFIUSDT",
         "APT": "APTUSDT",
         "PUMP": "PUMPUSDT",
+        "HOME": "HOMEUSDT",
         "PROM": "PROMUSDT",
         "BANK": "BANKUSDT",
         "HMSTR": "HMSTRUSDT",
@@ -287,7 +289,7 @@ class Config:
 
     لطفاً تحلیل کنید:
     1. آیا تحلیل تکنیکال منطقی است؟
-    2. آیا اخبار با تحلیل تکنیکال هم‌جهت هستند？
+    2. آیا اخبار با تحلیل تکنیکال هم‌جهت هستند؟
     3. مهم‌ترین ریسک چیست؟
     4. مهم‌ترین عامل مثبت چیست؟
     5. آیا سیگنال بیش از حد خوش‌بینانه است؟
