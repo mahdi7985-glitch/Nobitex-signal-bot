@@ -63,7 +63,23 @@ class SignalEngine:
                     indicators, df, signal['action']
                 )
 
+                logger.info(
+                    f"🎯 {symbol}: "
+                    f"Action={signal['action']} | "
+                    f"Score={score_result['total']:.1f} | "
+                    f"SL={risk_levels.get('stop_loss')} | "
+                    f"TP1={risk_levels.get('tp1')} | "
+                    f"TP2={risk_levels.get('tp2')} | "
+                    f"RR={risk_levels.get('risk_reward')}"
+                )
+
                 if risk_levels.get('risk_reward', 0) < self.MIN_ACCEPTABLE_RR:
+                    logger.info(
+                        f"❌ {symbol}: Rejected by R/R | "
+                        f"Score={score_result['total']:.1f} | "
+                        f"RR={risk_levels.get('risk_reward', 0):.2f} | "
+                        f"Required={self.MIN_ACCEPTABLE_RR}"
+                    )
                     signal = {
                         'action': 'WAIT',
                         'strength': 'NEUTRAL',
