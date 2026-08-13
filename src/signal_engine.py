@@ -513,6 +513,9 @@ class SignalEngine:
         df: pd.DataFrame,
         action: str
     ) -> Dict[str, Optional[float]]:
+        """
+        محاسبه حد ضرر و اهداف بر اساس ATR و جهت سیگنال
+        """
         if action not in ['BUY', 'SELL']:
             return {
                 'stop_loss': None,
@@ -542,22 +545,36 @@ class SignalEngine:
 
         final_sl = base_sl
 
+        # ================================================
+        # اعمال فیلتر حمایت/مقاومت روی SL (اصلاح شده)
+        # ================================================
         if action == 'BUY' and support is not None:
             if support > base_sl:
                 distance_pct = (support - base_sl) / price * 100
-                if distance_pct < 2:
-                    final_sl = support * 0.995
-                else:
-                    final_sl = base_sl + (support - base_sl) * 0.5
+
+                # فقط حمایت بسیار نزدیک به SL پایه را در نظر بگیر
+                if distance_pct < 0.5:
+                    candidate_sl = support * 0.995
+
+                    # هرگز SL را به قیمت ورود نزدیکتر نکن
+                    if candidate_sl < final_sl:
+                        final_sl = candidate_sl
 
         elif action == 'SELL' and resistance is not None:
             if resistance < base_sl:
                 distance_pct = (base_sl - resistance) / price * 100
-                if distance_pct < 2:
-                    final_sl = resistance * 1.005
-                else:
-                    final_sl = base_sl - (base_sl - resistance) * 0.5
 
+                # فقط مقاومت بسیار نزدیک به SL پایه را در نظر بگیر
+                if distance_pct < 0.5:
+                    candidate_sl = resistance * 1.005
+
+                    # هرگز SL را به قیمت ورود نزدیکتر نکن
+                    if candidate_sl > final_sl:
+                        final_sl = candidate_sl
+
+        # ================================================
+        # اعمال محدودیت درصدی
+        # ================================================
         if action == 'BUY':
             sl_percent = (price - final_sl) / price * 100
             if sl_percent < self.config.MIN_SL_PERCENT:
@@ -576,6 +593,9 @@ class SignalEngine:
                 logger.warning(f"SL too wide: {sl_percent:.2f}% > {self.config.MAX_SL_PERCENT}%")
                 final_sl = price * (1 + self.config.MAX_SL_PERCENT / 100)
 
+        # ================================================
+        # محاسبه اهداف
+        # ================================================
         if action == 'BUY':
             tp1 = price + (atr * self.config.ATR_TP1_MULTIPLIER)
             tp2 = price + (atr * self.config.ATR_TP2_MULTIPLIER)
