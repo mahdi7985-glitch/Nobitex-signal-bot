@@ -97,7 +97,7 @@ class Config:
         "ZEC": "ZEC-USDT",
         "CRV": "CRV-USDT",
         "DEXE": "DEXE-USDT",
-        "SHIB": "1K_SHIB-USDT",   # ✅ اصلاح شد
+        "SHIB": "SHIB-USDT",
         "GRAM": "GRAM-USDT",
         "BICO": "BICO-USDT",
         "HOME": "HOME-USDT",
