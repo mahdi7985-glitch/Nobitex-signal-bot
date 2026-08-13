@@ -23,13 +23,12 @@ class SignalEngine:
         self.config = config
         self.indicators = TechnicalIndicators(config)
         self.MIN_ACCEPTABLE_RR = 1.5
-        
-    def analyze_symbol(
-        self, 
-        df: pd.DataFrame, 
-        symbol: str, 
-        current_price: float
-   ) -> Optional[Dict[str, Any]]:
+        def analyze_symbol(
+    self, 
+    df: pd.DataFrame, 
+    symbol: str, 
+    current_price: float
+) -> Optional[Dict[str, Any]]:
     """
     تحلیل کامل یک نماد و تولید سیگنال
     """
