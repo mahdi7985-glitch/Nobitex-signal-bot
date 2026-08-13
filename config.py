@@ -206,7 +206,7 @@ class Config:
     ATR_TP2_MULTIPLIER = 4.0
     ATR_SL_MULTIPLIER_HIGH_VOLATILITY = 2.0
 
-    MIN_SL_PERCENT = 0.5
+    MIN_SL_PERCENT = 0.3
     MAX_SL_PERCENT = 10.0
 
     # =========================
