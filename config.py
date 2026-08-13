@@ -81,9 +81,41 @@ class Config:
     }
 
     # =========================
-    # NOBITEX SYMBOL MAPPING
+    # NOBITEX SYMBOL MAPPING - برای UDF (بدون خط تیره)
     # =========================
     NOBITEX_SYMBOL_MAP = {
+        "BTC": "BTCUSDT",
+        "ETH": "ETHUSDT",
+        "DOGE": "DOGEUSDT",
+        "SOL": "SOLUSDT",
+        "XRP": "XRPUSDT",
+        "ADA": "ADAUSDT",
+        "TRX": "TRXUSDT",
+        "ATOM": "ATOMUSDT",
+        "DOT": "DOTUSDT",
+        "XLM": "XLMUSDT",
+        "ZEC": "ZECUSDT",
+        "CRV": "CRVUSDT",
+        "DEXE": "DEXEUSDT",
+        "SHIB": "1K_SHIBUSDT",
+        "GRAM": "GRAMUSDT",
+        "BICO": "BICOUSDT",
+        "HOME": "HOMEUSDT",
+        "APT": "APTUSDT",
+        "PUMP": "PUMPUSDT",
+        "PROM": "PROMUSDT",
+        "BANK": "BANKUSDT",
+        "HMSTR": "HMSTRUSDT",
+        "DOGS": "DOGSUSDT",
+        "COOKIE": "COOKIEUSDT",
+        "XAUT": "XAUTUSDT",
+        "PAXG": "PAXGUSDT",
+    }
+
+    # =========================
+    # NOBITEX STATS MAPPING - برای Stats (با خط تیره)
+    # =========================
+    NOBITEX_STATS_MAP = {
         "BTC": "BTC-USDT",
         "ETH": "ETH-USDT",
         "DOGE": "DOGE-USDT",
@@ -97,7 +129,7 @@ class Config:
         "ZEC": "ZEC-USDT",
         "CRV": "CRV-USDT",
         "DEXE": "DEXE-USDT",
-        "SHIB": "SHIB-USDT",
+        "SHIB": "1K_SHIB-USDT",
         "GRAM": "GRAM-USDT",
         "BICO": "BICO-USDT",
         "HOME": "HOME-USDT",
