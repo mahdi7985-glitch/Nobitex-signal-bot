@@ -87,7 +87,7 @@ class TechnicalIndicators:
             indicators['macd_histogram'] = macd_result['histogram']
             
             # =========================
-            # ADX + DI+ + DI-
+            # ADX + DI+ + DI- (اصلاح شده)
             # =========================
             adx_result = self.calculate_adx_full(df)
             indicators['adx'] = adx_result['adx']
@@ -187,8 +187,8 @@ class TechnicalIndicators:
             adx = ADXIndicator(df['high'], df['low'], df['close'], window=period)
             return {
                 'adx': adx.adx(),
-                'di_plus': adx.di_plus(),
-                'di_minus': adx.di_minus()
+                'di_plus': adx.adx_pos(),   # ✅ اصلاح شد
+                'di_minus': adx.adx_neg()   # ✅ اصلاح شد
             }
         except Exception as e:
             logger.error(f"Error calculating ADX: {e}")
