@@ -24,6 +24,27 @@ class SignalEngine:
         self.indicators = TechnicalIndicators(config)
         self.MIN_ACCEPTABLE_RR = 1.5
 
+    def _format_price(self, price: float) -> float:
+        """
+        فرمت قیمت بر اساس اندازه آن.
+        فقط برای خروجی است؛ محاسبات داخلی با مقدار کامل انجام میشوند.
+        """
+        if price == 0:
+            return 0.0
+
+        if price >= 1000:
+            decimals = 2
+        elif price >= 1:
+            decimals = 3
+        elif price >= 0.01:
+            decimals = 4
+        elif price >= 0.0001:
+            decimals = 6
+        else:
+            decimals = 8
+
+        return round(price, decimals)
+
     def analyze_symbol(
         self,
         df: pd.DataFrame,
@@ -581,9 +602,9 @@ class SignalEngine:
         risk_reward = reward_1 / risk if risk > 0 else 0
 
         return {
-            'stop_loss': round(final_sl, 2),
-            'tp1': round(tp1, 2),
-            'tp2': round(tp2, 2),
+            'stop_loss': self._format_price(final_sl),
+            'tp1': self._format_price(tp1),
+            'tp2': self._format_price(tp2),
             'risk_reward': round(risk_reward, 2)
         }
 
