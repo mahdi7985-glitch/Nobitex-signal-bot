@@ -25,100 +25,109 @@ class SignalEngine:
         self.MIN_ACCEPTABLE_RR = 1.5
         
     def analyze_symbol(
-        self, 
-        df: pd.DataFrame, 
-        symbol: str, 
-        current_price: float
-    ) -> Optional[Dict[str, Any]]:
-        """
-        تحلیل کامل یک نماد و تولید سیگنال
-        """
-        try:
-            indicators = self.indicators.get_latest_values(df)
-            if not indicators:
-                logger.warning(f"⚠️ No indicators for {symbol}")
-                return None
-            
-            indicators['price'] = current_price
-            
-            score_result = self._calculate_score(indicators, df)
-            
-            signal = self._determine_signal(
-                score_result['total'], 
-                indicators, 
-                df
+    self, 
+    df: pd.DataFrame, 
+    symbol: str, 
+    current_price: float
+) -> Optional[Dict[str, Any]]:
+    """
+    تحلیل کامل یک نماد و تولید سیگنال
+    """
+    try:
+        indicators = self.indicators.get_latest_values(df)
+        if not indicators:
+            logger.warning(f"⚠️ No indicators for {symbol}")
+            return None
+        
+        indicators['price'] = current_price
+        
+        score_result = self._calculate_score(indicators, df)
+        
+        # ================================================
+        # 🐞 لاگ امتیاز هر ارز
+        # ================================================
+        logger.info(
+            f"📊 {symbol}: "
+            f"Score={score_result['total']:.1f} | "
+            f"Trend={score_result['breakdown'].get('trend', 0)} | "
+            f"Momentum={score_result['breakdown'].get('momentum', 0)} | "
+            f"Volume={score_result['breakdown'].get('volume', 0)} | "
+            f"Volatility={score_result['breakdown'].get('volatility', 0)} | "
+            f"Breakout={score_result['breakdown'].get('breakout', 0)} | "
+            f"S/R={score_result['breakdown'].get('support_resistance', 0)} | "
+            f"ADX={score_result['breakdown'].get('adx', 0)}"
+        )
+        
+        signal = self._determine_signal(
+            score_result['total'], 
+            indicators, 
+            df
+        )
+        
+        if signal['action'] in ['BUY', 'SELL']:
+            risk_levels = self._calculate_risk_levels(
+                indicators, df, signal['action']
             )
             
-            if signal['action'] in ['BUY', 'SELL']:
-                risk_levels = self._calculate_risk_levels(
-                    indicators, df, signal['action']
-                )
-                
-                if risk_levels.get('risk_reward', 0) < self.MIN_ACCEPTABLE_RR:
-                    signal = {
-                        'action': 'WAIT',
-                        'strength': 'NEUTRAL',
-                        'confidence': 50,
-                        'exceptional': False,
-                        'exceptional_reason': f'Low R/R: {risk_levels.get("risk_reward", 0):.2f}'
-                    }
-                    risk_levels = {
-                        'stop_loss': None,
-                        'tp1': None,
-                        'tp2': None,
-                        'risk_reward': None
-                    }
-            else:
+            if risk_levels.get('risk_reward', 0) < self.MIN_ACCEPTABLE_RR:
+                signal = {
+                    'action': 'WAIT',
+                    'strength': 'NEUTRAL',
+                    'confidence': 50,
+                    'exceptional': False,
+                    'exceptional_reason': f'Low R/R: {risk_levels.get("risk_reward", 0):.2f}'
+                }
                 risk_levels = {
                     'stop_loss': None,
                     'tp1': None,
                     'tp2': None,
                     'risk_reward': None
                 }
-            
-            sr_levels = self.indicators.get_support_resistance(df)
-            
-            return {
-                'symbol': symbol,
-                'price': current_price,
-                'signal': signal['action'],
-                'strength': signal['strength'],
-                'score': score_result['total'],
-                'score_breakdown': score_result['breakdown'],
-                'confidence': signal['confidence'],
-                'rsi': indicators.get('rsi', 50),
-                'macd': indicators.get('macd_line', 0),
-                'macd_signal': indicators.get('macd_signal', 0),
-                'macd_histogram': indicators.get('macd_histogram', 0),
-                'adx': indicators.get('adx', 20),
-                'di_plus': indicators.get('di_plus', 0),
-                'di_minus': indicators.get('di_minus', 0),
-                'atr': indicators.get('atr', 0),
-                'volume_ratio': indicators.get('volume_ratio', 1.0),
-                'ema_fast': indicators.get('ema_fast', current_price),
-                'ema_slow': indicators.get('ema_slow', current_price),
-                'bb_upper': indicators.get('bb_upper', current_price * 1.1),
-                'bb_lower': indicators.get('bb_lower', current_price * 0.9),
-                'support': sr_levels.get('support'),
-                'resistance': sr_levels.get('resistance'),
-                'support_zone': sr_levels.get('support_zone'),
-                'resistance_zone': sr_levels.get('resistance_zone'),
-                'stop_loss': risk_levels['stop_loss'],
-                'tp1': risk_levels['tp1'],
-                'tp2': risk_levels['tp2'],
-                'risk_reward': risk_levels['risk_reward'],
-                'timestamp': pd.Timestamp.now()
+        else:
+            risk_levels = {
+                'stop_loss': None,
+                'tp1': None,
+                'tp2': None,
+                'risk_reward': None
             }
-            
-        except Exception as e:
-            logger.error(f"❌ Error analyzing {symbol}: {e}")
-            return None
-    
-    def _calculate_score(
-        self, 
-        indicators: Dict[str, Optional[float]], 
-        df: pd.DataFrame
-    ) -> Dict[str, Any]:
+        
+        sr_levels = self.indicators.get_support_resistance(df)
+        
+        return {
+            'symbol': symbol,
+            'price': current_price,
+            'signal': signal['action'],
+            'strength': signal['strength'],
+            'score': score_result['total'],
+            'score_breakdown': score_result['breakdown'],
+            'confidence': signal['confidence'],
+            'rsi': indicators.get('rsi', 50),
+            'macd': indicators.get('macd_line', 0),
+            'macd_signal': indicators.get('macd_signal', 0),
+            'macd_histogram': indicators.get('macd_histogram', 0),
+            'adx': indicators.get('adx', 20),
+            'di_plus': indicators.get('di_plus', 0),
+            'di_minus': indicators.get('di_minus', 0),
+            'atr': indicators.get('atr', 0),
+            'volume_ratio': indicators.get('volume_ratio', 1.0),
+            'ema_fast': indicators.get('ema_fast', current_price),
+            'ema_slow': indicators.get('ema_slow', current_price),
+            'bb_upper': indicators.get('bb_upper', current_price * 1.1),
+            'bb_lower': indicators.get('bb_lower', current_price * 0.9),
+            'support': sr_levels.get('support'),
+            'resistance': sr_levels.get('resistance'),
+            'support_zone': sr_levels.get('support_zone'),
+            'resistance_zone': sr_levels.get('resistance_zone'),
+            'stop_loss': risk_levels['stop_loss'],
+            'tp1': risk_levels['tp1'],
+            'tp2': risk_levels['tp2'],
+            'risk_reward': risk_levels['risk_reward'],
+            'timestamp': pd.Timestamp.now()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error analyzing {symbol}: {e}")
+        return None
         """
         محاسبه امتیاز نهایی بر اساس اندیکاتورها
         """
