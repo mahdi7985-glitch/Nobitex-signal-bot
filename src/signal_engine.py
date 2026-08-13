@@ -171,7 +171,7 @@ class SignalEngine:
         
         # Momentum
         momentum_score = 0
-            # Momentum (ادامه)
+            
     if trend_score > 0:
         if rsi < 30:
             momentum_score += 4
