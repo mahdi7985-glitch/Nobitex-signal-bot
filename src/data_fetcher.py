@@ -195,11 +195,6 @@ class NobitexDataFetcher:
         """
         دریافت قیمت لحظه‌ای از نوبیتکس
         """
-        market_key = self._get_nobitex_symbol(symbol)
-
-        if not market_key:
-            logger.warning(f"⚠️ No market mapping for {symbol}")
-            return None
 
         try:
             self._rate_limit('stats')
@@ -207,7 +202,7 @@ class NobitexDataFetcher:
             url = f"{self.base_url_stats}/market/stats"
 
             params = {
-                'srcCurrency': symbol.upper(),
+                'srcCurrency': symbol,
                 'dstCurrency': 'USDT'
             }
 
@@ -234,17 +229,10 @@ class NobitexDataFetcher:
 
             stats = data.get('stats', {})
 
-            # ابتدا دقیقاً با mapping جستجو می‌کنیم
+            # نوبیتکس کلید را به صورت BTC-USDT برمی‌گرداند
+            market_key = f"{symbol.upper()}-USDT"
+
             ticker = stats.get(market_key)
-
-            # اگر پیدا نشد، جستجوی بدون حساسیت به حروف
-            if not ticker:
-                target_key = market_key.upper()
-
-                for key, value in stats.items():
-                    if key.upper() == target_key:
-                        ticker = value
-                        break
 
             if not ticker:
                 logger.warning(
@@ -275,13 +263,14 @@ class NobitexDataFetcher:
 
         except (ValueError, TypeError) as e:
             logger.error(
-                f"❌ Invalid price for {symbol}: {price if 'price' in locals() else None} "
-                f"({e})"
+                f"❌ Invalid price data for {symbol}: {e}"
             )
             return None
 
         except Exception as e:
-            logger.error(f"❌ Unexpected error getting price for {symbol}: {e}")
+            logger.error(
+                f"❌ Unexpected error getting price for {symbol}: {e}"
+            )
             return None
     
     def get_multiple_prices(self, symbols: List[str]) -> Dict[str, Optional[float]]:
