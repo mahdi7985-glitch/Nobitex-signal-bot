@@ -615,7 +615,6 @@ class SignalEngine:
     ) -> List[Dict[str, Any]]:
         """
         انتخاب بهترین فرصتهای معاملاتی از بین نتایج
-        با در نظر گرفتن قدرت سیگنال (فاصله از ۵۰) برای هر دو جهت BUY و SELL
         """
         active_signals = [r for r in results if r and r['signal'] != 'WAIT']
 
@@ -623,52 +622,48 @@ class SignalEngine:
             score = signal.get('score', 50)
             confidence = signal.get('confidence', 50)
             risk_reward = signal.get('risk_reward') or 0
-            signal_type = signal.get('signal', 'WAIT')
             symbol = signal.get('symbol', 'Unknown')
 
             # ================================================
-            # قدرت سیگنال بر اساس فاصله از ۵۰
+            # ۱. قدرت سیگنال (بدون محدودیت مصنوعی)
             # ================================================
             signal_strength = abs(score - 50)
-
-            # نرمالسازی و محدودسازی به بازه 50 تا 100
-            normalized_score = min(100, 50 + (signal_strength * 2))
+            normalized_score = 50 + (signal_strength * 2)
 
             # ================================================
-            # قدرت سیگنال (امتیاز استثنایی)
+            # ۲. R/R (حداکثر ۲۰ امتیاز)
+            # ================================================
+            rr_score = min(risk_reward, 4) * 5
+
+            # ================================================
+            # ۳. قدرت استثنایی (حداکثر ۵ امتیاز)
             # ================================================
             strength_boost = {
                 'WEAK': 0,
-                'NORMAL': 5,
-                'STRONG': 10,
-                'VERY_STRONG': 15,
-                'EXCEPTIONAL': 20
+                'NORMAL': 2,
+                'STRONG': 3,
+                'VERY_STRONG': 4,
+                'EXCEPTIONAL': 5
             }.get(signal.get('strength'), 0)
 
             # ================================================
-            # امتیاز R/R
-            # ================================================
-            rr_score = min(risk_reward, 5) * 5
-
-            # ================================================
-            # اولویت نهایی
+            # ۴. اولویت نهایی
             # ================================================
             priority = (
-                (normalized_score * 0.35) +
-                (confidence * 0.25) +
+                (normalized_score * 0.40) +
+                (confidence * 0.35) +
                 (rr_score) +
                 (strength_boost)
             )
 
             # ================================================
-            # 🐞 لاگ اولویت برای بررسی
+            # 🐞 لاگ برای بررسی
             # ================================================
             logger.info(
                 f"🏆 PRIORITY {symbol}: "
-                f"Score={score} | Confidence={confidence:.1f} | "
+                f"Score={score:.1f} | Confidence={confidence:.1f} | "
                 f"RR={risk_reward:.2f} | Strength={signal.get('strength')} | "
-                f"normalized_score={normalized_score:.1f} | "
-                f"Priority={priority:.2f}"
+                f"norm_score={normalized_score:.1f} | Priority={priority:.2f}"
             )
 
             return priority
