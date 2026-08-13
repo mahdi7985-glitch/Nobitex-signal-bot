@@ -23,9 +23,10 @@ class NobitexDataFetcher:
     
     def __init__(self):
         # =========================
-        # آدرس‌های API (همه روی apiv2)
+        # آدرس‌های API
         # =========================
-        self.base_url = "https://apiv2.nobitex.ir"
+        self.base_url_public = "https://apiv2.nobitex.ir"
+        self.base_url_stats = "https://apiv2.nobitex.ir"
         
         self.session = requests.Session()
         self.session.headers.update({
@@ -38,7 +39,7 @@ class NobitexDataFetcher:
         # Rate Limit
         self.rate_limits = {
             'stats': {
-                'min_interval': 0.5,
+                'min_interval': 1.0,
                 'last_request_time': 0
             },
             'udf': {
@@ -114,7 +115,7 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('udf')
-            url = f"{self.base_url}/market/udf/history"
+            url = f"{self.base_url_public}/market/udf/history"
             params = {
                 'symbol': nobitex_symbol,
                 'resolution': resolution,
@@ -192,7 +193,7 @@ class NobitexDataFetcher:
     
     def get_current_price(self, symbol: str) -> Optional[float]:
         """
-        دریافت قیمت لحظه‌ای با GET از apiv2
+        دریافت قیمت لحظه‌ای از نوبیتکس
         """
         nobitex_symbol = self._get_nobitex_symbol(symbol)
         if not nobitex_symbol:
@@ -200,7 +201,7 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('stats')
-            url = f"{self.base_url}/market/stats"
+            url = f"{self.base_url_stats}/market/stats"
             
             params = {
                 'srcCurrency': symbol,
@@ -215,11 +216,23 @@ class NobitexDataFetcher:
                 timeout=Config.REQUEST_TIMEOUT
             )
             
+            # ========================================
+            # 🐞 دیباگ: نمایش پاسخ خام API
+            # ========================================
+            logger.info(f"📡 STATS STATUS for {symbol}: {response.status_code}")
+            logger.info(f"📄 STATS RESPONSE for {symbol}: {response.text[:2000]}")
+            
             if response.status_code == 200:
                 data = response.json()
                 
                 if data.get('status') == 'ok':
                     stats = data.get('stats', {})
+                    
+                    # ========================================
+                    # 🐞 دیباگ: نمایش کلیدهای موجود در stats
+                    # ========================================
+                    logger.info(f"🔑 STATS KEYS for {symbol}: {list(stats.keys())}")
+                    
                     market_key = f"{symbol.lower()}-usdt"
                     ticker = stats.get(market_key, {})
                     
@@ -242,7 +255,7 @@ class NobitexDataFetcher:
     
     def get_multiple_prices(self, symbols: List[str]) -> Dict[str, Optional[float]]:
         """
-        دریافت قیمت چند ارز به صورت تک‌تک با GET از apiv2
+        دریافت قیمت چند ارز به صورت POST
         """
         if not symbols:
             return {}
