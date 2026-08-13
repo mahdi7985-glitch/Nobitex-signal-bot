@@ -613,6 +613,10 @@ class SignalEngine:
         results: List[Dict[str, Any]],
         limit: int = 5
     ) -> List[Dict[str, Any]]:
+        """
+        انتخاب بهترین فرصتهای معاملاتی از بین نتایج
+        با در نظر گرفتن قدرت سیگنال (فاصله از ۵۰) برای هر دو جهت BUY و SELL
+        """
         active_signals = [r for r in results if r and r['signal'] != 'WAIT']
 
         def calculate_priority(signal: Dict[str, Any]) -> float:
@@ -620,12 +624,19 @@ class SignalEngine:
             confidence = signal.get('confidence', 50)
             risk_reward = signal.get('risk_reward') or 0
             signal_type = signal.get('signal', 'WAIT')
+            symbol = signal.get('symbol', 'Unknown')
 
-            if signal_type == 'BUY':
-                normalized_score = score
-            else:
-                normalized_score = 100 - score
+            # ================================================
+            # قدرت سیگنال بر اساس فاصله از ۵۰
+            # ================================================
+            signal_strength = abs(score - 50)
 
+            # نرمالسازی و محدودسازی به بازه 50 تا 100
+            normalized_score = min(100, 50 + (signal_strength * 2))
+
+            # ================================================
+            # قدرت سیگنال (امتیاز استثنایی)
+            # ================================================
             strength_boost = {
                 'WEAK': 0,
                 'NORMAL': 5,
@@ -634,13 +645,30 @@ class SignalEngine:
                 'EXCEPTIONAL': 20
             }.get(signal.get('strength'), 0)
 
+            # ================================================
+            # امتیاز R/R
+            # ================================================
             rr_score = min(risk_reward, 5) * 5
 
+            # ================================================
+            # اولویت نهایی
+            # ================================================
             priority = (
                 (normalized_score * 0.35) +
                 (confidence * 0.25) +
                 (rr_score) +
                 (strength_boost)
+            )
+
+            # ================================================
+            # 🐞 لاگ اولویت برای بررسی
+            # ================================================
+            logger.info(
+                f"🏆 PRIORITY {symbol}: "
+                f"Score={score} | Confidence={confidence:.1f} | "
+                f"RR={risk_reward:.2f} | Strength={signal.get('strength')} | "
+                f"normalized_score={normalized_score:.1f} | "
+                f"Priority={priority:.2f}"
             )
 
             return priority
