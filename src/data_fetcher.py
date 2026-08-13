@@ -195,24 +195,17 @@ class NobitexDataFetcher:
         """
         دریافت قیمت لحظه‌ای از نوبیتکس
         """
-        # گرفتن کلید بازار از mapping
-        market_key = Config.NOBITEX_SYMBOL_MAP.get(symbol)
-        if not market_key:
-            logger.warning(f"⚠️ No market mapping for {symbol}")
-            return None
-
         try:
             self._rate_limit('stats')
 
             url = f"{self.base_url_stats}/market/stats"
 
-            # استفاده از market_key به جای symbol برای srcCurrency
             params = {
-                'srcCurrency': market_key,
+                'srcCurrency': symbol,
                 'dstCurrency': 'USDT'
             }
 
-            logger.debug(f"Fetching price for {symbol} (market_key: {market_key})")
+            logger.debug(f"Fetching price for {symbol}")
 
             response = self.session.get(
                 url,
@@ -235,7 +228,9 @@ class NobitexDataFetcher:
 
             stats = data.get('stats', {})
 
-            # کلید رو با market_key جستجو کن
+            # نوبیتکس کلید را به صورت BTC-USDT برمی‌گرداند
+            market_key = f"{symbol.upper()}-USDT"
+
             ticker = stats.get(market_key)
 
             if not ticker:
