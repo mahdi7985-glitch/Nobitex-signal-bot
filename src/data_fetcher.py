@@ -26,7 +26,7 @@ class NobitexDataFetcher:
         # API URLs
         # =========================
         self.base_url_public = "https://apiv2.nobitex.ir"
-        self.base_url_stats = "https://apiv2.nobitex.ir"
+        self.base_url_stats = "https://api.nobitex.ir"
 
         self.session = requests.Session()
 
@@ -106,10 +106,15 @@ class NobitexDataFetcher:
 
     def _get_nobitex_symbol(self, symbol: str) -> Optional[str]:
         """
-        دریافت نماد بازار از Config
+        دریافت نماد بازار برای UDF (بدون خط تیره)
         """
-
         return Config.NOBITEX_SYMBOL_MAP.get(symbol)
+
+    def _get_stats_symbol(self, symbol: str) -> Optional[str]:
+        """
+        دریافت نماد بازار برای Stats (با خط تیره)
+        """
+        return Config.NOBITEX_STATS_MAP.get(symbol)
 
     def _get_resolution(self, timeframe: str) -> Optional[str]:
         """
@@ -136,7 +141,7 @@ class NobitexDataFetcher:
         limit = limit or Config.CANDLES_LIMIT
 
         # -------------------------
-        # Symbol mapping
+        # Symbol mapping (UDF)
         # -------------------------
 
         nobitex_symbol = self._get_nobitex_symbol(symbol)
@@ -216,10 +221,6 @@ class NobitexDataFetcher:
                 timeout=Config.REQUEST_TIMEOUT
             )
 
-            # =================================================
-            # HTTP ERROR
-            # =================================================
-
             if response.status_code != 200:
 
                 logger.error(
@@ -229,10 +230,6 @@ class NobitexDataFetcher:
                 )
 
                 return None
-
-            # =================================================
-            # JSON
-            # =================================================
 
             try:
                 data = response.json()
@@ -246,10 +243,6 @@ class NobitexDataFetcher:
 
                 return None
 
-            # =================================================
-            # API STATUS
-            # =================================================
-
             if data.get("s") != "ok":
 
                 logger.error(
@@ -258,10 +251,6 @@ class NobitexDataFetcher:
                 )
 
                 return None
-
-            # =================================================
-            # DATA ARRAYS
-            # =================================================
 
             timestamps = data.get("t", [])
             opens = data.get("o", [])
@@ -277,10 +266,6 @@ class NobitexDataFetcher:
                 )
 
                 return None
-
-            # =================================================
-            # BUILD DATAFRAME
-            # =================================================
 
             df = pd.DataFrame({
                 "timestamp": pd.to_datetime(
@@ -298,10 +283,6 @@ class NobitexDataFetcher:
                 "timestamp",
                 inplace=True
             )
-
-            # =================================================
-            # NUMERIC CONVERSION
-            # =================================================
 
             numeric_columns = [
                 "open",
@@ -323,10 +304,6 @@ class NobitexDataFetcher:
                 inplace=True
             )
 
-            # =================================================
-            # DATA VALIDATION
-            # =================================================
-
             min_required = max(
                 Config.EMA_TREND,
                 200
@@ -342,15 +319,7 @@ class NobitexDataFetcher:
 
                 return None
 
-            # =================================================
-            # SORT
-            # =================================================
-
             df.sort_index(inplace=True)
-
-            # =================================================
-            # CACHE
-            # =================================================
 
             if Config.ENABLE_CACHE:
 
@@ -364,10 +333,6 @@ class NobitexDataFetcher:
             )
 
             return df
-
-        # =====================================================
-        # EXCEPTIONS
-        # =====================================================
 
         except requests.exceptions.Timeout:
 
@@ -406,12 +371,13 @@ class NobitexDataFetcher:
         دریافت قیمت لحظه‌ای از نوبیتکس
         """
 
-        market_key = self._get_nobitex_symbol(symbol)
+        # برای Stats از mapping جداگانه استفاده کن (با خط تیره)
+        stats_key = self._get_stats_symbol(symbol)
 
-        if not market_key:
+        if not stats_key:
 
             logger.warning(
-                f"⚠️ No market mapping for {symbol}"
+                f"⚠️ No stats mapping for {symbol}"
             )
 
             return None
@@ -424,10 +390,6 @@ class NobitexDataFetcher:
                 f"{self.base_url_stats}"
                 f"/market/stats"
             )
-
-            # توجه:
-            # srcCurrency باید خود symbol باشد.
-            # market_key فقط برای پیدا کردن ticker استفاده می‌شود.
 
             params = {
                 "srcCurrency": symbol,
@@ -471,7 +433,7 @@ class NobitexDataFetcher:
             )
 
             ticker = stats.get(
-                market_key,
+                stats_key,
                 {}
             )
 
@@ -479,7 +441,7 @@ class NobitexDataFetcher:
 
                 logger.warning(
                     f"⚠️ No ticker found for {symbol}. "
-                    f"Expected: {market_key}, "
+                    f"Expected: {stats_key}, "
                     f"Available: {list(stats.keys())}"
                 )
 
