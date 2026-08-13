@@ -23,10 +23,9 @@ class NobitexDataFetcher:
     
     def __init__(self):
         # =========================
-        # آدرس‌های API (هر دو روی apiv2)
+        # آدرس‌های API (همه روی apiv2)
         # =========================
-        self.base_url_public = "https://apiv2.nobitex.ir"
-        self.base_url_stats = "https://apiv2.nobitex.ir"
+        self.base_url = "https://apiv2.nobitex.ir"
         
         self.session = requests.Session()
         self.session.headers.update({
@@ -39,7 +38,7 @@ class NobitexDataFetcher:
         # Rate Limit
         self.rate_limits = {
             'stats': {
-                'min_interval': 1.0,  # ✅ کاهش به 1 ثانیه
+                'min_interval': 1.0,
                 'last_request_time': 0
             },
             'udf': {
@@ -115,7 +114,7 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('udf')
-            url = f"{self.base_url_public}/market/udf/history"
+            url = f"{self.base_url}/market/udf/history"
             params = {
                 'symbol': nobitex_symbol,
                 'resolution': resolution,
@@ -193,7 +192,7 @@ class NobitexDataFetcher:
     
     def get_current_price(self, symbol: str) -> Optional[float]:
         """
-        دریافت قیمت لحظه‌ای برای یک ارز با GET روی apiv2
+        دریافت قیمت لحظه‌ای با GET از apiv2
         """
         nobitex_symbol = self._get_nobitex_symbol(symbol)
         if not nobitex_symbol:
@@ -201,7 +200,7 @@ class NobitexDataFetcher:
         
         try:
             self._rate_limit('stats')
-            url = f"{self.base_url_stats}/market/stats"
+            url = f"{self.base_url}/market/stats"
             
             params = {
                 'srcCurrency': symbol,
@@ -243,17 +242,56 @@ class NobitexDataFetcher:
     
     def get_multiple_prices(self, symbols: List[str]) -> Dict[str, Optional[float]]:
         """
-        دریافت قیمت چند ارز به صورت تک‌تک (چون API چندتایی رو قبول نمیکنه)
+        دریافت قیمت چند ارز به صورت همزمان با GET از apiv2
+        (با یک درخواست و srcCurrency=ارز1,ارز2,...)
         """
         if not symbols:
             return {}
         
-        prices = {}
-        for symbol in symbols:
-            price = self.get_current_price(symbol)
-            prices[symbol] = price
-        
-        return prices
+        try:
+            self._rate_limit('stats')
+            url = f"{self.base_url}/market/stats"
+            
+            # تبدیل لیست به رشته با کاما جدا شده
+            src_currency = ",".join(symbols)
+            params = {
+                'srcCurrency': src_currency,
+                'dstCurrency': 'USDT'
+            }
+            
+            response = self.session.get(
+                url, 
+                params=params,
+                timeout=Config.REQUEST_TIMEOUT
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get('status') == 'ok':
+                    stats = data.get('stats', {})
+                    prices = {}
+                    
+                    for symbol in symbols:
+                        market_key = f"{symbol.lower()}-usdt"
+                        ticker = stats.get(market_key, {})
+                        price = ticker.get('lastPrice')
+                        if price is not None:
+                            prices[symbol] = float(price)
+                        else:
+                            prices[symbol] = None
+                    
+                    return prices
+                else:
+                    logger.error(f"❌ API Error: {data}")
+                    return {}
+            else:
+                logger.error(f"❌ HTTP Error {response.status_code}")
+                return {}
+                
+        except Exception as e:
+            logger.error(f"❌ Error getting multiple prices: {e}")
+            return {}
     
     def clear_cache(self):
         """پاک کردن کش"""
