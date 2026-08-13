@@ -47,7 +47,7 @@ class NobitexDataFetcher:
         }
 
     # ================================================
-    # توابع کمکی (بدون تغییر)
+    # توابع کمکی
     # ================================================
 
     def _rate_limit(self, endpoint_type: str = "udf"):
@@ -72,7 +72,7 @@ class NobitexDataFetcher:
         return self.resolution_map.get(timeframe)
 
     # ================================================
-    # OHLCV (بدون تغییر - قبلاً کار میکرد)
+    # OHLCV
     # ================================================
 
     def get_ohlcv(
@@ -179,14 +179,13 @@ class NobitexDataFetcher:
             return None
 
     # ================================================
-    # قیمت لحظه‌ای (فقط این بخش اصلاح شده)
+    # قیمت لحظه‌ای
     # ================================================
 
     def get_current_price(self, symbol: str) -> Optional[float]:
         """
         دریافت قیمت لحظه‌ای از نوبیتکس - GET روی apiv2
         """
-        # گرفتن stats_key از Config
         stats_key = self._get_stats_symbol(symbol)
         if not stats_key:
             logger.warning(f"⚠️ No stats mapping for {symbol}")
@@ -196,13 +195,20 @@ class NobitexDataFetcher:
             self._rate_limit("stats")
             url = f"{self.base_url}/market/stats"
 
-            # srcCurrency = symbol (نه stats_key)
+            # ================================================
+            # اصلاح: برای SHIB از 1K_SHIB استفاده کن
+            # ================================================
+            if symbol == "SHIB":
+                src_currency = "1K_SHIB"
+            else:
+                src_currency = symbol
+
             params = {
-                "srcCurrency": symbol,
+                "srcCurrency": src_currency,
                 "dstCurrency": "USDT"
             }
 
-            logger.debug(f"Fetching price for {symbol}")
+            logger.debug(f"Fetching price for {symbol} (srcCurrency: {src_currency})")
 
             response = self.session.get(url, params=params, timeout=Config.REQUEST_TIMEOUT)
 
@@ -217,8 +223,6 @@ class NobitexDataFetcher:
                 return None
 
             stats = data.get("stats", {})
-
-            # جستجو با stats_key (مثلاً BTC-USDT)
             ticker = stats.get(stats_key, {})
 
             if not ticker:
@@ -250,7 +254,7 @@ class NobitexDataFetcher:
             return None
 
     # ================================================
-    # قیمت‌های چندگانه (بدون تغییر)
+    # قیمت‌های چندگانه
     # ================================================
 
     def get_multiple_prices(self, symbols: List[str]) -> Dict[str, Optional[float]]:
