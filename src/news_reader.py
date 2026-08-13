@@ -4,7 +4,7 @@ Responsible for fetching and parsing news from Nitrimo Radar
 """
 
 import logging
-import re
+import time
 import hashlib
 from datetime import datetime
 from typing import Optional, Dict, List, Any
@@ -32,9 +32,6 @@ class NewsReader:
         self.cache = {}
         self.last_fetch_time = None
         
-        # =========================
-        # کلمات کلیدی فارسی برای تحلیل احساسات
-        # =========================
         self.bullish_keywords_fa = [
             'صعود', 'افزایش', 'رشد', 'جهش', 'صعودی', 'خرید', 'سبز',
             'مثبت', 'بالا', 'صرفه‌جویی', 'بازگشت', 'احیاء', 'قوی',
@@ -48,9 +45,6 @@ class NewsReader:
             'شکست حمایت', 'خرسی', 'قرمزپوش'
         ]
         
-        # =========================
-        # کلمات کلیدی انگلیسی - فقط کلمات بلندتر برای جلوگیری از match کاذب
-        # =========================
         self.bullish_keywords_en = [
             'bullish', 'uptrend', 'breakout', 'rally', 'surge',
             'positive', 'growth', 'higher', 'strong', 'gain'
@@ -61,9 +55,6 @@ class NewsReader:
             'negative', 'lower', 'weak', 'drop', 'crash'
         ]
         
-        # =========================
-        # کلمات تقویت‌کننده (شدت احساسات)
-        # =========================
         self.strong_indicators = [
             'بسیار', 'شدید', 'قابل توجه', 'انفجاری', 'تاریخی',
             'very', 'strong', 'significant', 'massive', 'extreme'
@@ -75,29 +66,14 @@ class NewsReader:
         ]
         
     def _word_in_text(self, word: str, text: str) -> bool:
-        """
-        بررسی وجود کلمه در متن با استفاده از regex
-        برای جلوگیری از match کاذب
-        """
-        # برای کلمات فارسی
+        import re
         if any('\u0600' <= c <= '\u06FF' for c in word):
             pattern = r'(?<![آ-ی])' + re.escape(word) + r'(?![آ-ی])'
         else:
-            # برای کلمات انگلیسی - whole word matching
             pattern = r'\b' + re.escape(word.lower()) + r'\b'
-        
         return bool(re.search(pattern, text.lower()))
     
     def fetch_news(self, force: bool = False) -> Optional[Dict[str, Any]]:
-        """
-        دریافت اخبار از Nitrimo Radar
-        
-        Args:
-            force: اگر True باشد، کش را نادیده می‌گیرد
-            
-        Returns:
-            دیکشنری شامل خلاصه اخبار و اطلاعات تکمیلی
-        """
         if not force and self.last_fetch_time:
             time_since_last = (datetime.now() - self.last_fetch_time).total_seconds()
             if time_since_last < self.config.NEWS_REFRESH_INTERVAL:
@@ -106,7 +82,6 @@ class NewsReader:
         
         try:
             logger.info(f"Fetching news from {self.source_url}")
-            
             response = self.session.get(
                 self.source_url,
                 timeout=self.config.REQUEST_TIMEOUT
@@ -114,7 +89,6 @@ class NewsReader:
             
             if response.status_code == 200:
                 news_data = self._parse_news(response.text)
-                
                 if news_data:
                     self.cache['last_news'] = news_data
                     self.last_fetch_time = datetime.now()
@@ -138,17 +112,10 @@ class NewsReader:
             return None
     
     def _parse_news(self, html_content: str) -> Dict[str, Any]:
-        """
-        تجزیه HTML و استخراج بخش «نگاه سریع»
-        """
         try:
             soup = BeautifulSoup(html_content, 'lxml')
             
-            # =========================
-            # پیدا کردن بخش «نگاه سریع»
-            # =========================
             quick_look_text = None
-            
             selectors = self.config.NITRIMO_QUICK_LOOK_SELECTOR.split(', ')
             for selector in selectors:
                 element = soup.select_one(selector)
@@ -170,11 +137,7 @@ class NewsReader:
                     if quick_look_text:
                         break
             
-            # =========================
-            # استخراج اخبار
-            # =========================
             news_items = []
-            
             news_selectors = getattr(self.config, 'NEWS_ITEM_SELECTORS', 
                                      ['.news-item', '.post-item', '.article-item', '.radar-item'])
             
@@ -185,10 +148,8 @@ class NewsReader:
                         try:
                             title = el.find(['h1', 'h2', 'h3', 'h4'])
                             title_text = title.get_text(strip=True) if title else ""
-                            
                             desc = el.find(['p', 'div'], class_=lambda x: x and ('desc' in x or 'content' in x or 'text' in x or 'summary' in x))
                             desc_text = desc.get_text(strip=True) if desc else ""
-                            
                             if title_text or desc_text:
                                 news_items.append({
                                     'title': title_text[:200],
@@ -207,8 +168,12 @@ class NewsReader:
                 'source': self.source_url
             }
             
+            # ================================================
+            # ✅ اصلاح: هش کردن با encode
+            # ================================================
             content_hash = hashlib.md5(
-                (quick_look_text or "") + str(news_items)
+                (quick_look_text or "").encode('utf-8') + 
+                str(news_items).encode('utf-8')
             ).hexdigest()
             result['hash'] = content_hash
             
@@ -220,20 +185,17 @@ class NewsReader:
             return None
     
     def get_quick_look(self) -> Optional[str]:
-        """دریافت خلاصه «نگاه سریع»"""
         news_data = self.fetch_news()
         if news_data:
             return news_data.get('quick_look')
         return None
     
     def get_news_summary(self) -> Optional[str]:
-        """دریافت خلاصه کامل اخبار برای ارسال به AI"""
         news_data = self.fetch_news()
         if not news_data:
             return "اخبار در دسترس نیست"
         
         parts = []
-        
         quick_look = news_data.get('quick_look')
         if quick_look and quick_look != "خلاصه اخبار در دسترس نیست":
             parts.append(f"📰 خلاصه اخبار:\n{quick_look}")
@@ -252,12 +214,6 @@ class NewsReader:
         return "\n".join(parts) if parts else "اخبار در دسترس نیست"
     
     def get_market_sentiment(self, news_data: Dict[str, Any] = None) -> Dict[str, Any]:
-        """
-        تحلیل احساسات بازار بر اساس اخبار (فارسی و انگلیسی)
-        
-        Returns:
-            دیکشنری شامل sentiment, score, count, details
-        """
         if not news_data:
             news_data = self.fetch_news()
             if not news_data:
@@ -270,7 +226,6 @@ class NewsReader:
                     'details': 'No news data available'
                 }
         
-        # جمع‌آوری متن
         text_parts = []
         quick_look = news_data.get('quick_look', '')
         if quick_look:
@@ -286,46 +241,32 @@ class NewsReader:
         
         text = " ".join(text_parts)
         
-        # =========================
-        # شمارش کلمات کلیدی با استفاده از regex
-        # =========================
         bullish_count = 0
         bearish_count = 0
         strong_count = 0
         weak_count = 0
         
-        # کلمات صعودی فارسی
         for word in self.bullish_keywords_fa:
             if self._word_in_text(word, text):
                 bullish_count += 1
-        
-        # کلمات نزولی فارسی
-        for word in self.bearish_keywords_fa:
-            if self._word_in_text(word, text):
-                bearish_count += 1
-        
-        # کلمات صعودی انگلیسی (whole word)
         for word in self.bullish_keywords_en:
             if self._word_in_text(word, text):
                 bullish_count += 1
         
-        # کلمات نزولی انگلیسی (whole word)
+        for word in self.bearish_keywords_fa:
+            if self._word_in_text(word, text):
+                bearish_count += 1
         for word in self.bearish_keywords_en:
             if self._word_in_text(word, text):
                 bearish_count += 1
         
-        # کلمات تقویت‌کننده
         for word in self.strong_indicators:
             if self._word_in_text(word, text):
                 strong_count += 1
-        
         for word in self.weak_indicators:
             if self._word_in_text(word, text):
                 weak_count += 1
         
-        # =========================
-        # محاسبه امتیاز نهایی
-        # =========================
         total_items = len(news_data.get('news_items', []))
         
         if bullish_count == 0 and bearish_count == 0:
@@ -333,12 +274,10 @@ class NewsReader:
             score = 0.0
         else:
             raw_score = (bullish_count - bearish_count) / (bullish_count + bearish_count + 1)
-            
             if strong_count > 0:
                 raw_score = raw_score * (1 + min(strong_count * 0.1, 0.5))
             if weak_count > 0:
                 raw_score = raw_score * (1 - min(weak_count * 0.05, 0.3))
-            
             score = max(-1.0, min(1.0, raw_score))
             
             if score > 0.15:
@@ -360,17 +299,10 @@ class NewsReader:
         }
     
     def get_market_sentiment_score(self, news_data: Dict[str, Any] = None) -> float:
-        """
-        دریافت امتیاز احساسات بازار (برای استفاده در امتیازدهی)
-        
-        Returns:
-            عدد بین -1 (نزولی) تا +1 (صعودی)
-        """
         result = self.get_market_sentiment(news_data)
         return result.get('score', 0.0)
     
     def clear_cache(self):
-        """پاک کردن کش"""
         self.cache.clear()
         self.last_fetch_time = None
         logger.info("News cache cleared")
