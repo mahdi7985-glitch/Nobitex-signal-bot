@@ -23,109 +23,57 @@ class NobitexDataFetcher:
 
     def __init__(self):
         # =========================
-        # API URLs
+        # API URLs - همه روی apiv2
         # =========================
-        self.base_url_public = "https://apiv2.nobitex.ir"
-        self.base_url_stats = "https://api.nobitex.ir"
+        self.base_url = "https://apiv2.nobitex.ir"
 
         self.session = requests.Session()
-
         self.session.headers.update({
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36"
-            ),
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Content-Type": "application/json"
         })
 
-        # =========================
-        # CACHE
-        # =========================
         self.cache = {}
 
-        # =========================
-        # RATE LIMIT
-        # =========================
         self.rate_limits = {
-            "stats": {
-                "min_interval": 0.5,
-                "last_request_time": 0
-            },
-            "udf": {
-                "min_interval": 1.0,
-                "last_request_time": 0
-            }
+            "stats": {"min_interval": 0.5, "last_request_time": 0},
+            "udf": {"min_interval": 1.0, "last_request_time": 0}
         }
 
-        # =========================
-        # TIMEFRAME -> NOBITEX RESOLUTION
-        # =========================
         self.resolution_map = {
-            "1m": "1",
-            "5m": "5",
-            "15m": "15",
-            "30m": "30",
-            "1h": "60",
-            "3h": "180",
-            "4h": "240",
-            "1d": "D",
-            "1w": "W",
-            "1M": "M"
+            "1m": "1", "5m": "5", "15m": "15", "30m": "30",
+            "1h": "60", "3h": "180", "4h": "240",
+            "1d": "D", "1w": "W", "1M": "M"
         }
 
-    # =========================================================
-    # RATE LIMIT
-    # =========================================================
+    # ================================================
+    # توابع کمکی (بدون تغییر)
+    # ================================================
 
     def _rate_limit(self, endpoint_type: str = "udf"):
-        """مدیریت نرخ درخواست‌ها"""
-
         if endpoint_type not in self.rate_limits:
             endpoint_type = "udf"
-
         limit = self.rate_limits[endpoint_type]
-
         now = time.time()
         elapsed = now - limit["last_request_time"]
-
         if elapsed < limit["min_interval"]:
             sleep_time = limit["min_interval"] - elapsed
-
-            logger.debug(
-                f"Rate limit: sleeping "
-                f"{sleep_time:.2f}s for {endpoint_type}"
-            )
-
+            logger.debug(f"Rate limit: sleeping {sleep_time:.2f}s for {endpoint_type}")
             time.sleep(sleep_time)
-
         limit["last_request_time"] = time.time()
 
-    # =========================================================
-    # SYMBOL / TIMEFRAME HELPERS
-    # =========================================================
-
     def _get_nobitex_symbol(self, symbol: str) -> Optional[str]:
-        """
-        دریافت نماد بازار برای UDF (بدون خط تیره)
-        """
         return Config.NOBITEX_SYMBOL_MAP.get(symbol)
 
     def _get_stats_symbol(self, symbol: str) -> Optional[str]:
-        """
-        دریافت نماد بازار برای Stats (با خط تیره)
-        """
         return Config.NOBITEX_STATS_MAP.get(symbol)
 
     def _get_resolution(self, timeframe: str) -> Optional[str]:
-        """
-        تبدیل تایم‌فریم داخلی به resolution نوبیتکس
-        """
-
         return self.resolution_map.get(timeframe)
 
-    # =========================================================
-    # OHLCV
-    # =========================================================
+    # ================================================
+    # OHLCV (بدون تغییر - قبلاً کار میکرد)
+    # ================================================
 
     def get_ohlcv(
         self,
@@ -133,74 +81,29 @@ class NobitexDataFetcher:
         timeframe: Optional[str] = None,
         limit: Optional[int] = None
     ) -> Optional[pd.DataFrame]:
-        """
-        دریافت داده OHLCV از نوبیتکس
-        """
-
         timeframe = timeframe or Config.TIMEFRAME
         limit = limit or Config.CANDLES_LIMIT
 
-        # -------------------------
-        # Symbol mapping (UDF)
-        # -------------------------
-
         nobitex_symbol = self._get_nobitex_symbol(symbol)
-
         if not nobitex_symbol:
-            logger.warning(
-                f"⚠️ Symbol {symbol} not found in mapping"
-            )
+            logger.warning(f"⚠️ Symbol {symbol} not found in mapping")
             return None
-
-        # -------------------------
-        # Resolution
-        # -------------------------
 
         resolution = self._get_resolution(timeframe)
-
         if not resolution:
-            logger.warning(
-                f"⚠️ Timeframe {timeframe} not supported"
-            )
+            logger.warning(f"⚠️ Timeframe {timeframe} not supported")
             return None
 
-        # -------------------------
-        # Cache
-        # -------------------------
-
         cache_key = f"{symbol}_{timeframe}_{limit}"
-
         if Config.ENABLE_CACHE and cache_key in self.cache:
-
             cache_time, cached_data = self.cache[cache_key]
-
-            age = (datetime.now() - cache_time).total_seconds()
-
-            if age < Config.CACHE_TTL:
-
-                logger.debug(
-                    f"Cache hit for {symbol}"
-                )
-
-                return (
-                    cached_data.copy()
-                    if cached_data is not None
-                    else None
-                )
-
-        # -------------------------
-        # API request
-        # -------------------------
+            if (datetime.now() - cache_time).total_seconds() < Config.CACHE_TTL:
+                logger.debug(f"Cache hit for {symbol}")
+                return cached_data.copy() if cached_data is not None else None
 
         try:
-
             self._rate_limit("udf")
-
-            url = (
-                f"{self.base_url_public}"
-                f"/market/udf/history"
-            )
-
+            url = f"{self.base_url}/market/udf/history"
             params = {
                 "symbol": nobitex_symbol,
                 "resolution": resolution,
@@ -208,48 +111,22 @@ class NobitexDataFetcher:
                 "countback": limit
             }
 
-            logger.debug(
-                f"Fetching {symbol}: "
-                f"symbol={nobitex_symbol}, "
-                f"resolution={resolution}, "
-                f"countback={limit}"
-            )
+            logger.debug(f"Fetching {symbol}: symbol={nobitex_symbol}, resolution={resolution}, countback={limit}")
 
-            response = self.session.get(
-                url,
-                params=params,
-                timeout=Config.REQUEST_TIMEOUT
-            )
+            response = self.session.get(url, params=params, timeout=Config.REQUEST_TIMEOUT)
 
             if response.status_code != 200:
-
-                logger.error(
-                    f"❌ HTTP Error "
-                    f"{response.status_code} for {symbol}: "
-                    f"{response.text}"
-                )
-
+                logger.error(f"❌ HTTP Error {response.status_code} for {symbol}: {response.text}")
                 return None
 
             try:
                 data = response.json()
-
             except ValueError:
-
-                logger.error(
-                    f"❌ Invalid JSON response for {symbol}: "
-                    f"{response.text}"
-                )
-
+                logger.error(f"❌ Invalid JSON response for {symbol}: {response.text}")
                 return None
 
             if data.get("s") != "ok":
-
-                logger.error(
-                    f"❌ API Error for {symbol}: "
-                    f"{data}"
-                )
-
+                logger.error(f"❌ API Error for {symbol}: {data}")
                 return None
 
             timestamps = data.get("t", [])
@@ -260,276 +137,132 @@ class NobitexDataFetcher:
             volumes = data.get("v", [])
 
             if not timestamps:
-
-                logger.warning(
-                    f"⚠️ No OHLCV data for {symbol}"
-                )
-
+                logger.warning(f"⚠️ No OHLCV data for {symbol}")
                 return None
 
             df = pd.DataFrame({
-                "timestamp": pd.to_datetime(
-                    timestamps,
-                    unit="s"
-                ),
+                "timestamp": pd.to_datetime(timestamps, unit="s"),
                 "open": opens,
                 "high": highs,
                 "low": lows,
                 "close": closes,
                 "volume": volumes
             })
+            df.set_index("timestamp", inplace=True)
 
-            df.set_index(
-                "timestamp",
-                inplace=True
-            )
+            for col in ["open", "high", "low", "close", "volume"]:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
 
-            numeric_columns = [
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume"
-            ]
+            df.dropna(subset=["open", "high", "low", "close", "volume"], inplace=True)
 
-            for column in numeric_columns:
-
-                df[column] = pd.to_numeric(
-                    df[column],
-                    errors="coerce"
-                )
-
-            df.dropna(
-                subset=numeric_columns,
-                inplace=True
-            )
-
-            min_required = max(
-                Config.EMA_TREND,
-                200
-            ) + 50
-
+            min_required = max(Config.EMA_TREND, 200) + 50
             if len(df) < min_required:
-
-                logger.warning(
-                    f"⚠️ Insufficient data for {symbol}: "
-                    f"{len(df)} candles "
-                    f"(need {min_required})"
-                )
-
+                logger.warning(f"⚠️ Insufficient data for {symbol}: {len(df)} candles (need {min_required})")
                 return None
 
             df.sort_index(inplace=True)
 
             if Config.ENABLE_CACHE:
+                self.cache[cache_key] = (datetime.now(), df.copy())
 
-                self.cache[cache_key] = (
-                    datetime.now(),
-                    df.copy()
-                )
-
-            logger.info(
-                f"✅ Fetched {len(df)} candles for {symbol}"
-            )
-
+            logger.info(f"✅ Fetched {len(df)} candles for {symbol}")
             return df
 
         except requests.exceptions.Timeout:
-
-            logger.error(
-                f"❌ Timeout fetching {symbol}"
-            )
-
+            logger.error(f"❌ Timeout fetching {symbol}")
             return None
-
         except requests.exceptions.RequestException as e:
-
-            logger.error(
-                f"❌ Request error fetching {symbol}: {e}"
-            )
-
+            logger.error(f"❌ Request error fetching {symbol}: {e}")
             return None
-
         except Exception as e:
-
-            logger.error(
-                f"❌ Unexpected error fetching "
-                f"{symbol}: {e}"
-            )
-
+            logger.error(f"❌ Unexpected error fetching {symbol}: {e}")
             return None
 
-    # =========================================================
-    # CURRENT PRICE
-    # =========================================================
+    # ================================================
+    # قیمت لحظه‌ای (فقط این بخش اصلاح شده)
+    # ================================================
 
-    def get_current_price(
-        self,
-        symbol: str
-    ) -> Optional[float]:
+    def get_current_price(self, symbol: str) -> Optional[float]:
         """
-        دریافت قیمت لحظه‌ای از نوبیتکس
+        دریافت قیمت لحظه‌ای از نوبیتکس - GET روی apiv2
         """
-
-        # برای Stats از mapping جداگانه استفاده کن (با خط تیره)
+        # گرفتن stats_key از Config
         stats_key = self._get_stats_symbol(symbol)
-
         if not stats_key:
-
-            logger.warning(
-                f"⚠️ No stats mapping for {symbol}"
-            )
-
+            logger.warning(f"⚠️ No stats mapping for {symbol}")
             return None
 
         try:
-
             self._rate_limit("stats")
+            url = f"{self.base_url}/market/stats"
 
-            url = (
-                f"{self.base_url_stats}"
-                f"/market/stats"
-            )
-
+            # srcCurrency = symbol (نه stats_key)
             params = {
                 "srcCurrency": symbol,
                 "dstCurrency": "USDT"
             }
 
-            logger.debug(
-                f"Fetching price for {symbol}"
-            )
+            logger.debug(f"Fetching price for {symbol}")
 
-            response = self.session.get(
-                url,
-                params=params,
-                timeout=Config.REQUEST_TIMEOUT
-            )
+            response = self.session.get(url, params=params, timeout=Config.REQUEST_TIMEOUT)
 
             if response.status_code != 200:
-
-                logger.error(
-                    f"❌ HTTP Error "
-                    f"{response.status_code} for {symbol}: "
-                    f"{response.text}"
-                )
-
+                logger.error(f"❌ HTTP Error {response.status_code} for {symbol}: {response.text}")
                 return None
 
             data = response.json()
 
             if data.get("status") != "ok":
-
-                logger.error(
-                    f"❌ API Error for {symbol}: "
-                    f"{data}"
-                )
-
+                logger.error(f"❌ API Error for {symbol}: {data}")
                 return None
 
-            stats = data.get(
-                "stats",
-                {}
-            )
+            stats = data.get("stats", {})
 
-            ticker = stats.get(
-                stats_key,
-                {}
-            )
+            # جستجو با stats_key (مثلاً BTC-USDT)
+            ticker = stats.get(stats_key, {})
 
             if not ticker:
-
                 logger.warning(
                     f"⚠️ No ticker found for {symbol}. "
                     f"Expected: {stats_key}, "
                     f"Available: {list(stats.keys())}"
                 )
-
                 return None
 
             price = ticker.get("latest")
-
             if price is None:
-
-                logger.warning(
-                    f"⚠️ No latest price for {symbol}"
-                )
-
+                logger.warning(f"⚠️ No latest price for {symbol}")
                 return None
 
             return float(price)
 
         except requests.exceptions.Timeout:
-
-            logger.error(
-                f"❌ Timeout getting price for {symbol}"
-            )
-
+            logger.error(f"❌ Timeout getting price for {symbol}")
             return None
-
         except requests.exceptions.RequestException as e:
-
-            logger.error(
-                f"❌ Request error getting price "
-                f"for {symbol}: {e}"
-            )
-
+            logger.error(f"❌ Request error getting price for {symbol}: {e}")
             return None
-
         except (ValueError, TypeError) as e:
-
-            logger.error(
-                f"❌ Invalid price data for "
-                f"{symbol}: {e}"
-            )
-
+            logger.error(f"❌ Invalid price data for {symbol}: {e}")
             return None
-
         except Exception as e:
-
-            logger.error(
-                f"❌ Unexpected error getting price "
-                f"for {symbol}: {e}"
-            )
-
+            logger.error(f"❌ Unexpected error getting price for {symbol}: {e}")
             return None
 
-    # =========================================================
-    # MULTIPLE PRICES
-    # =========================================================
+    # ================================================
+    # قیمت‌های چندگانه (بدون تغییر)
+    # ================================================
 
-    def get_multiple_prices(
-        self,
-        symbols: List[str]
-    ) -> Dict[str, Optional[float]]:
-        """
-        دریافت قیمت چند ارز
-        """
-
+    def get_multiple_prices(self, symbols: List[str]) -> Dict[str, Optional[float]]:
         if not symbols:
             return {}
 
         prices = {}
-
         for symbol in symbols:
-
-            prices[symbol] = (
-                self.get_current_price(symbol)
-            )
+            prices[symbol] = self.get_current_price(symbol)
 
         return prices
 
-    # =========================================================
-    # CACHE
-    # =========================================================
-
     def clear_cache(self):
-        """
-        پاک کردن کش
-        """
-
         self.cache.clear()
-
-        logger.info(
-            "Cache cleared"
-        )
+        logger.info("Cache cleared")
