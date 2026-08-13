@@ -23,7 +23,7 @@ class BaleBot:
         self.config = config
         self.token = config.BALE_BOT_TOKEN
         self.chat_id = config.BALE_CHAT_ID
-        self.base_url = f"https://tapi.bale.ai/v1/bot{self.token}"
+        self.base_url = f"https://tapi.bale.ai/v1/bot{token}"
         self.session = requests.Session()
         self.session.headers.update({
             "Content-Type": "application/json"
