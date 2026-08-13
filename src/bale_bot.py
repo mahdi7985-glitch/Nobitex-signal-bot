@@ -3,11 +3,13 @@ Bale Messenger Module
 Responsible for sending signals and messages to Bale messenger
 """
 
-import logging
-from typing import Optional, Dict, Any, List
-from datetime import datetime
-
 import requests
+import logging
+import time
+from datetime import datetime, timezone
+from typing import Optional, Dict, Any, List
+
+import jdatetime
 
 from config import Config
 
@@ -23,19 +25,16 @@ class BaleBot:
         self.config = config
         self.token = config.BALE_BOT_TOKEN
         self.chat_id = config.BALE_CHAT_ID
-        self.base_url = f"https://tapi.bale.ai/v1/bot{token}"
-        self.session = requests.Session()
-        self.session.headers.update({
-            "Content-Type": "application/json"
-        })
+        self.max_retries = 3
         
-    def send_message(self, text: str, parse_mode: str = "HTML") -> bool:
+    def send_message(self, text: str, parse_mode: str = "HTML", max_retries: int = 3) -> bool:
         """
-        ارسال پیام به بله
+        ارسال پیام به بله با قابلیت تلاش مجدد
         
         Args:
             text: متن پیام
             parse_mode: حالت پارس (HTML یا Markdown)
+            max_retries: تعداد تلاش مجدد
             
         Returns:
             True در صورت موفقیت، False در صورت خطا
@@ -45,54 +44,51 @@ class BaleBot:
             return True
             
         if not self.token or not self.chat_id:
-            logger.error("❌ Bale token or chat_id not configured")
+            logger.warning("⚠️ توکن یا آیدی بله تنظیم نشده")
             return False
             
-        try:
-            url = f"{self.base_url}/sendMessage"
-            payload = {
-                "chat_id": self.chat_id,
-                "text": text,
-                "parse_mode": parse_mode
-            }
-            
-            response = self.session.post(
-                url,
-                json=payload,
-                timeout=self.config.REQUEST_TIMEOUT
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('ok'):
-                    logger.info("✅ Message sent to Bale successfully")
-                    return True
-                else:
-                    logger.error(f"❌ Bale API error: {data}")
-                    return False
-            else:
-                logger.error(f"❌ HTTP error {response.status_code}: {response.text}")
-                return False
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    f"https://tapi.bale.ai/v1/bot{self.token}/sendMessage",
+                    json={
+                        'chat_id': self.chat_id,
+                        'text': text,
+                        'parse_mode': parse_mode
+                    },
+                    timeout=self.config.REQUEST_TIMEOUT
+                )
                 
-        except requests.exceptions.Timeout:
-            logger.error("❌ Timeout sending message to Bale")
-            return False
-        except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Request error sending to Bale: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"❌ Unexpected error sending to Bale: {e}")
-            return False
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('ok'):
+                        logger.info("✅ پیام به بله ارسال شد")
+                        return True
+                    else:
+                        logger.error(f"❌ خطای API بله: {data}")
+                        return False
+                elif response.status_code == 503:
+                    logger.warning(f"⚠️ خطای ۵۰۳، تلاش {attempt+1}/{max_retries}")
+                    time.sleep(5)
+                else:
+                    logger.error(f"❌ HTTP error {response.status_code}: {response.text}")
+                    
+            except requests.exceptions.Timeout:
+                logger.error(f"❌ Timeout (تلاش {attempt+1}/{max_retries})")
+                time.sleep(3)
+            except requests.exceptions.RequestException as e:
+                logger.error(f"❌ خطای شبکه: {e}")
+                time.sleep(3)
+            except Exception as e:
+                logger.error(f"❌ خطای غیرمنتظره: {e}")
+                time.sleep(3)
+        
+        logger.error("❌ ارسال به بله پس از تلاش‌های مجدد ناموفق بود.")
+        return False
     
     def send_signal(self, signal: Dict[str, Any]) -> bool:
         """
         ارسال سیگنال معاملاتی به بله
-        
-        Args:
-            signal: دیکشنری سیگنال تولید شده توسط SignalEngine
-            
-        Returns:
-            True در صورت موفقیت، False در صورت خطا
         """
         if not signal:
             return False
@@ -103,12 +99,6 @@ class BaleBot:
     def send_summary(self, signals: List[Dict[str, Any]]) -> bool:
         """
         ارسال خلاصه بازار
-        
-        Args:
-            signals: لیست سیگنال‌ها
-            
-        Returns:
-            True در صورت موفقیت، False در صورت خطا
         """
         if not signals:
             return False
@@ -119,18 +109,10 @@ class BaleBot:
     def send_multiple_signals(self, signals: List[Dict[str, Any]], limit: int = 5) -> bool:
         """
         ارسال چند سیگنال برتر
-        
-        Args:
-            signals: لیست سیگنال‌ها
-            limit: تعداد سیگنال‌های برتر
-            
-        Returns:
-            True در صورت موفقیت، False در صورت خطا
         """
         if not signals:
             return False
             
-        # انتخاب بهترین سیگنال‌ها
         top_signals = sorted(
             [s for s in signals if s.get('signal') != 'WAIT'],
             key=lambda x: x.get('score', 0),
@@ -140,7 +122,6 @@ class BaleBot:
         if not top_signals:
             return False
             
-        # ارسال هر سیگنال به صورت جداگانه
         success = True
         for signal in top_signals:
             if not self.send_signal(signal):
@@ -148,9 +129,35 @@ class BaleBot:
                 
         return success
     
+    def _get_persian_datetime(self) -> str:
+        """
+        دریافت تاریخ و زمان به فارسی
+        """
+        utc_now = datetime.now(timezone.utc)
+        iran_now = utc_now + jdatetime.timedelta(hours=3, minutes=30)
+        now = jdatetime.datetime.fromgregorian(datetime=iran_now)
+        
+        weekday_map = {
+            'Saturday': 'شنبه', 'Sunday': 'یکشنبه', 'Monday': 'دوشنبه',
+            'Tuesday': 'سه‌شنبه', 'Wednesday': 'چهارشنبه',
+            'Thursday': 'پنجشنبه', 'Friday': 'جمعه'
+        }
+        
+        month_map = {
+            'Farvardin': 'فروردین', 'Ordibehesht': 'اردیبهشت', 'Khordad': 'خرداد',
+            'Tir': 'تیر', 'Mordad': 'مرداد', 'Shahrivar': 'شهریور',
+            'Mehr': 'مهر', 'Aban': 'آبان', 'Azar': 'آذر',
+            'Dey': 'دی', 'Bahman': 'بهمن', 'Esfand': 'اسفند'
+        }
+        
+        weekday = weekday_map.get(now.strftime('%A'), '')
+        month = month_map.get(now.strftime('%B'), '')
+        
+        return f"{weekday} {now.strftime('%d')} {month} {now.strftime('%Y')} - ساعت {now.strftime('%H:%M')}"
+    
     def _format_signal_message(self, signal: Dict[str, Any]) -> str:
         """
-        فرمت کردن پیام سیگنال
+        فرمت کردن پیام سیگنال به سبک ربات قبلی
         """
         symbol = signal.get('symbol', 'Unknown')
         price = signal.get('price', 0)
@@ -158,35 +165,34 @@ class BaleBot:
         strength = signal.get('strength', 'NEUTRAL')
         score = signal.get('score', 50)
         confidence = signal.get('confidence', 50)
+        persian_date = self._get_persian_datetime()
         
-        # ایموجی بر اساس نوع سیگنال
-        emoji_map = {
-            'BUY': '🟢',
-            'SELL': '🔴',
-            'WAIT': '🟡'
+        # تعیین وضعیت کلی
+        status_map = {
+            (70, 100): ("🔥", "خرید قوی", "فرصت عالی برای خرید"),
+            (60, 69): ("📈", "خرید ملایم", "احتمال رشد وجود دارد"),
+            (50, 59): ("⏸️", "نگهداری", "فعلاً دست نگه دار"),
+            (40, 49): ("📉", "فروش ملایم", "احتمال ریزش وجود دارد"),
+            (0, 39): ("💀", "فروش قوی", "ریسک بالاست، احتیاط کن")
         }
-        emoji = emoji_map.get(signal_type, '⚪')
         
-        # ایموجی قدرت
-        strength_emoji = {
-            'WEAK': '💤',
-            'NORMAL': '📈',
-            'STRONG': '🔥',
-            'VERY_STRONG': '💪',
-            'EXCEPTIONAL': '🌟'
-        }.get(strength, '')
+        status_emoji, status_text, advice = "⏸️", "نامشخص", ""
+        for (low, high), (emoji, status, adv) in status_map.items():
+            if low <= score <= high:
+                status_emoji, status_text, advice = emoji, status, adv
+                break
         
-        # =========================
         # ساخت پیام
-        # =========================
         lines = [
-            f"{emoji} <b>{symbol}</b>",
-            f"💰 قیمت: {price:,.2f} USDT",
-            f"📊 سیگنال: <b>{signal_type}</b> {strength_emoji}",
-            f"🔥 قدرت: {strength}",
-            f"🎯 اطمینان: {confidence:.1f}%",
-            f"📈 امتیاز: {score:.1f}/100",
-            ""
+            f"{status_emoji} تحلیل {symbol}",
+            f"📅 {persian_date}",
+            "",
+            "---",
+            f"وضعیت کلی: {status_text} - {advice}",
+            f"امتیاز سیستم: {score:.1f} از ۱۰۰",
+            f"اطمینان: {confidence:.1f}%",
+            f"قدرت سیگنال: {strength}",
+            "",
         ]
         
         # اندیکاتورها
@@ -199,12 +205,12 @@ class BaleBot:
         macd_status = "صعودی" if macd > macd_signal else "نزولی"
         
         lines.extend([
-            "📊 <b>اندیکاتورها:</b>",
-            f"• RSI: {rsi:.1f}",
-            f"• MACD: {macd_status}",
-            f"• ADX: {adx:.1f}",
-            f"• حجم: {volume_ratio:.2f}x",
-            ""
+            "📊 اندیکاتورها:",
+            f"🔸 RSI: {rsi:.1f}",
+            f"🔸 MACD: {macd_status}",
+            f"🔸 ADX: {adx:.1f}",
+            f"🔸 حجم: {volume_ratio:.2f}x",
+            "",
         ])
         
         # مدیریت ریسک
@@ -215,12 +221,12 @@ class BaleBot:
         
         if stop_loss and tp1:
             lines.extend([
-                "🎯 <b>مدیریت ریسک:</b>",
+                "🎯 مدیریت ریسک:",
                 f"🛑 حد ضرر: {stop_loss:,.2f}",
                 f"🎯 هدف ۱: {tp1:,.2f}",
                 f"🎯 هدف ۲: {tp2:,.2f}" if tp2 else "",
-                f"⚖️ R/R: {risk_reward:.2f}",
-                ""
+                f"⚖️ نسبت ریسک/بازده: {risk_reward:.2f}",
+                "",
             ])
         
         # حمایت و مقاومت
@@ -229,25 +235,26 @@ class BaleBot:
         
         if support and resistance:
             lines.extend([
-                "📐 <b>سطوح کلیدی:</b>",
+                "📐 سطوح کلیدی:",
                 f"🟢 حمایت: {support:,.2f}",
                 f"🔴 مقاومت: {resistance:,.2f}",
-                ""
+                "",
             ])
         
-        # زمان
-        timestamp = signal.get('timestamp')
-        if timestamp:
-            time_str = timestamp.strftime('%Y-%m-%d %H:%M')
-            lines.append(f"⏰ {time_str}")
+        # قیمت
+        lines.extend([
+            "---",
+            f"💰 قیمت لحظه‌ای: {price:,.2f} USDT",
+        ])
         
         return "\n".join(lines)
     
     def _format_summary_message(self, signals: List[Dict[str, Any]]) -> str:
         """
-        فرمت کردن پیام خلاصه
+        فرمت کردن پیام خلاصه به سبک ربات قبلی
         """
-        # آمار کلی
+        persian_date = self._get_persian_datetime()
+        
         total = len(signals)
         buy_signals = [s for s in signals if s.get('signal') == 'BUY']
         sell_signals = [s for s in signals if s.get('signal') == 'SELL']
@@ -255,16 +262,15 @@ class BaleBot:
         
         lines = [
             "━━━━━━━━━━━━━━━━━━━━",
-            "📊 <b>خلاصه بازار</b>",
+            f"📊 خلاصه بازار - {persian_date}",
             "━━━━━━━━━━━━━━━━━━━━",
             f"🟢 خرید: {len(buy_signals)}",
             f"🔴 فروش: {len(sell_signals)}",
             f"🟡 صبر: {len(wait_signals)}",
             f"📊 کل: {total}",
-            ""
+            "",
         ]
         
-        # بهترین فرصت‌ها
         if buy_signals:
             best_buy = max(buy_signals, key=lambda x: x.get('score', 0))
             lines.append(f"🔥 بهترین خرید: {best_buy.get('symbol')} ({best_buy.get('score', 0):.1f}%)")
@@ -274,19 +280,13 @@ class BaleBot:
             lines.append(f"⚠️ بهترین فروش: {best_sell.get('symbol')} ({best_sell.get('score', 0):.1f}%)")
         
         lines.append("")
-        lines.append(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        lines.append(f"⏰ {persian_date}")
         
         return "\n".join(lines)
     
     def send_error(self, error_message: str) -> bool:
         """
         ارسال پیام خطا
-        
-        Args:
-            error_message: متن خطا
-            
-        Returns:
-            True در صورت موفقیت، False در صورت خطا
         """
-        message = f"❌ <b>خطا</b>\n\n{error_message}"
+        message = f"❌ خطا\n\n{error_message}"
         return self.send_message(message)
