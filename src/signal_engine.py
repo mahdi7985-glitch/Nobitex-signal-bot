@@ -615,63 +615,83 @@ class SignalEngine:
     ) -> List[Dict[str, Any]]:
         """
         انتخاب بهترین فرصتهای معاملاتی از بین نتایج
+        
+        معماری:
+        1. فیلتر: حذف WAIT و RR<1.5
+        2. Priority = abs(Score - 50) + min(RR, 4) * 5
+        3. مرتبسازی نزولی و انتخاب TOP N
         """
-        active_signals = [r for r in results if r and r['signal'] != 'WAIT']
-
+        # ================================================
+        # STEP 1: FILTER
+        # ================================================
+        filtered_signals = []
+        
+        for r in results:
+            if not r:
+                continue
+                
+            # شرط ۱: Action نباید WAIT باشد
+            if r.get('signal') == 'WAIT':
+                logger.debug(f"⏭️ {r.get('symbol')}: Filtered (WAIT)")
+                continue
+            
+            # شرط ۲: RR باید >= 1.5 باشد
+            rr = r.get('risk_reward')
+            if rr is None or rr < self.MIN_ACCEPTABLE_RR:
+                rr_display = f"{rr:.2f}" if rr is not None else "None"
+                logger.debug(f"⏭️ {r.get('symbol')}: Filtered (RR={rr_display} < {self.MIN_ACCEPTABLE_RR})")
+                continue
+            
+            # ✅ از فیلتر عبور کرده
+            filtered_signals.append(r)
+        
+        if not filtered_signals:
+            logger.info("📭 No signals passed the filter")
+            return []
+        
+        # ================================================
+        # STEP 2: PRIORITY CALCULATION
+        # ================================================
         def calculate_priority(signal: Dict[str, Any]) -> float:
             score = signal.get('score', 50)
-            confidence = signal.get('confidence', 50)
-            risk_reward = signal.get('risk_reward') or 0
-            symbol = signal.get('symbol', 'Unknown')
-
-            # ================================================
-            # ۱. قدرت سیگنال (بدون محدودیت مصنوعی)
-            # ================================================
-            signal_strength = abs(score - 50)
-            normalized_score = 50 + (signal_strength * 2)
-
-            # ================================================
-            # ۲. R/R (حداکثر ۲۰ امتیاز)
-            # ================================================
-            rr_score = min(risk_reward, 4) * 5
-
-            # ================================================
-            # ۳. قدرت استثنایی (حداکثر ۵ امتیاز)
-            # ================================================
-            strength_boost = {
-                'WEAK': 0,
-                'NORMAL': 2,
-                'STRONG': 3,
-                'VERY_STRONG': 4,
-                'EXCEPTIONAL': 5
-            }.get(signal.get('strength'), 0)
-
-            # ================================================
-            # ۴. اولویت نهایی
-            # ================================================
-            priority = (
-                (normalized_score * 0.40) +
-                (confidence * 0.35) +
-                (rr_score) +
-                (strength_boost)
-            )
-
-            # ================================================
-            # 🐞 لاگ برای بررسی
-            # ================================================
-            logger.info(
-                f"🏆 PRIORITY {symbol}: "
-                f"Score={score:.1f} | Confidence={confidence:.1f} | "
-                f"RR={risk_reward:.2f} | Strength={signal.get('strength')} | "
-                f"norm_score={normalized_score:.1f} | Priority={priority:.2f}"
-            )
-
+            rr = signal.get('risk_reward', 0)
+            
+            # Strength = فاصله از 50
+            strength = abs(score - 50)
+            
+            # RR Score = محدود به 4 و ضرب در 5
+            rr_score = min(rr, 4.0) * 5
+            
+            # Priority نهایی
+            priority = strength + rr_score
+            
             return priority
-
+        
+        # ================================================
+        # STEP 3: SORT & SELECT TOP N
+        # ================================================
         sorted_signals = sorted(
-            active_signals,
+            filtered_signals,
             key=calculate_priority,
             reverse=True
         )
-
-        return sorted_signals[:limit]
+        
+        top_signals = sorted_signals[:limit]
+        
+        # ================================================
+        # STEP 4: LOG TOP SIGNALS
+        # ================================================
+        if top_signals:
+            logger.info(f"📤 Top {len(top_signals)} signals after filter:")
+            for i, s in enumerate(top_signals, 1):
+                priority = calculate_priority(s)
+                rr = s.get('risk_reward', 0)
+                logger.info(
+                    f"  {i}. {s.get('symbol')}: "
+                    f"Score={s.get('score'):.1f} | "
+                    f"RR={rr:.2f} | "
+                    f"Priority={priority:.2f} | "
+                    f"{s.get('signal')}"
+                )
+        
+        return top_signals
