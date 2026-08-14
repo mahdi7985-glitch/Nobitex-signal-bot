@@ -617,7 +617,7 @@ class SignalEngine:
         انتخاب بهترین فرصتهای معاملاتی از بین نتایج
         
         معماری:
-        1. فیلتر: حذف WAIT و RR<1.5
+        1. فیلتر: حذف WAIT و RR<1.5 و Score<MIN_SCORE
         2. Priority = abs(Score - 50) + min(RR, 4) * 5
         3. مرتبسازی نزولی و انتخاب TOP N
         """
@@ -635,7 +635,13 @@ class SignalEngine:
                 logger.debug(f"⏭️ {r.get('symbol')}: Filtered (WAIT)")
                 continue
             
-            # شرط ۲: RR باید >= 1.5 باشد
+            # ✅ شرط ۲: Score باید >= MIN_SCORE باشد
+            score = r.get('score', 0)
+            if score < self.config.MIN_SCORE:
+                logger.debug(f"⏭️ {r.get('symbol')}: Filtered (Score={score:.1f} < {self.config.MIN_SCORE})")
+                continue
+            
+            # شرط ۳: RR باید >= 1.5 باشد
             rr = r.get('risk_reward')
             if rr is None or rr < self.MIN_ACCEPTABLE_RR:
                 rr_display = f"{rr:.2f}" if rr is not None else "None"
