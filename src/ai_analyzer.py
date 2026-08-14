@@ -10,6 +10,13 @@ from typing import Optional, Dict, Any, List
 
 import requests
 
+# ✅ اضافه کردن پشتیبانی از Gemini
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
+    logging.warning("google-generativeai not installed. Run: pip install google-generativeai")
+
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -17,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 class AIAnalyzer:
     """
-    تحلیلگر هوش مصنوعی برای بررسی سیگنال‌ها و اخبار
+    تحلیلگر هوش مصنوعی برای بررسی سیگنالها و اخبار
     """
     
     def __init__(self, config=Config):
@@ -28,15 +35,32 @@ class AIAnalyzer:
         self.timeout = config.AI_TIMEOUT
         
         # =========================
+        # راهاندازی Gemini در صورت انتخاب
+        # =========================
+        self.gemini_model = None
+        if self.provider == 'gemini' and self.api_key and genai:
+            try:
+                genai.configure(api_key=self.api_key)
+                self.gemini_model = genai.GenerativeModel(self.model or "gemini-2.5-flash")
+                logger.info(f"✅ Gemini AI initialized with model: {self.model}")
+            except Exception as e:
+                logger.error(f"❌ Gemini initialization failed: {e}")
+                self.gemini_model = None
+        
+        # =========================
         # بررسی پشتیبانی مدل از JSON mode
         # =========================
         self.supports_json_mode = self._check_json_mode_support()
         
     def _check_json_mode_support(self) -> bool:
         """
-        بررسی اینکه مدل انتخابی از JSON mode پشتیبانی می‌کند
+        بررسی اینکه مدل انتخابی از JSON mode پشتیبانی میکند
         """
-        # مدل‌های پشتیبانی‌کننده از JSON mode (بر اساس نام دقیق)
+        # فقط برای OpenAI معنی دارد
+        if self.provider != 'openai':
+            return False
+            
+        # مدلهای پشتیبانیکننده از JSON mode (بر اساس نام دقیق)
         json_supported_models = [
             "gpt-4o",
             "gpt-4o-mini",
@@ -53,7 +77,7 @@ class AIAnalyzer:
             logger.info(f"✅ JSON mode supported for model: {self.model}")
             return True
         
-        # اگر مدل با gpt-4 شروع شود و در لیست نباشد، احتمالاً پشتیبانی می‌کند
+        # اگر مدل با gpt-4 شروع شود و در لیست نباشد، احتمالاً پشتیبانی میکند
         if self.model.startswith("gpt-4"):
             logger.info(f"⚠️ Assuming JSON mode support for {self.model} (GPT-4 family)")
             return True
@@ -117,6 +141,8 @@ class AIAnalyzer:
             # =========================
             if self.provider == 'openai':
                 response = self._call_openai(prompt)
+            elif self.provider == 'gemini':
+                response = self._call_gemini(prompt)
             else:
                 logger.warning(f"⚠️ Unknown AI provider: {self.provider}")
                 return {
@@ -175,7 +201,7 @@ class AIAnalyzer:
         
         Args:
             value: عدد مورد نظر
-            default: مقدار پیش‌فرض در صورت None بودن
+            default: مقدار پیشفرض در صورت None بودن
             
         Returns:
             رشته فرمت شده
@@ -264,18 +290,18 @@ class AIAnalyzer:
 ### احساسات اخبار (تحلیل شده توسط سیستم):
 - جهت کلی: {sentiment_emoji}
 - امتیاز احساسات: {sentiment_score:+.2f} (از -1 تا +1)
-- سیگنال‌های صعودی: {bullish_count}
-- سیگنال‌های نزولی: {bearish_count}
+- سیگنالهای صعودی: {bullish_count}
+- سیگنالهای نزولی: {bearish_count}
 """
         
         # =========================
         # ساخت پرامپت با درخواست JSON
         # =========================
-        prompt = f"""شما یک تحلیلگر حرفه‌ای بازارهای مالی و دارایی‌های دیجیتال هستید.
+        prompt = f"""شما یک تحلیلگر حرفهای بازارهای مالی و داراییهای دیجیتال هستید.
 
-لطفاً بر اساس داده‌های زیر تحلیل خود را ارائه دهید و در قالب JSON پاسخ دهید.
+لطفاً بر اساس دادههای زیر تحلیل خود را ارائه دهید و در قالب JSON پاسخ دهید.
 
-### داده‌های تکنیکال {symbol} ({asset_type}):
+### دادههای تکنیکال {symbol} ({asset_type}):
 - قیمت فعلی: {price_text}
 - RSI: {rsi:.1f}
 - MACD: {macd_status} (مقدار: {macd:.2f})
@@ -321,6 +347,37 @@ class AIAnalyzer:
         
         return prompt
     
+    def _call_gemini(self, prompt: str) -> Optional[str]:
+        """
+        فراخوانی Gemini API با استفاده از کتابخانه رسمی
+        """
+        if not self.gemini_model:
+            logger.error("❌ Gemini model not initialized")
+            return None
+        
+        try:
+            # ارسال درخواست به Gemini
+            response = self.gemini_model.generate_content(prompt)
+            
+            if response and response.text:
+                # تلاش برای استخراج JSON از پاسخ
+                text = response.text.strip()
+                
+                # اگر پاسخ حاوی JSON است، استخراج کن
+                json_match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
+                if json_match:
+                    return json_match.group()
+                else:
+                    # اگر JSON نبود، کل متن را برگردان
+                    return text
+            else:
+                logger.warning("⚠️ Gemini returned empty response")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Gemini call error: {e}")
+            return None
+    
     def _call_openai(self, prompt: str) -> Optional[str]:
         """
         فراخوانی OpenAI API
@@ -335,7 +392,7 @@ class AIAnalyzer:
             payload = {
                 "model": self.model,
                 "messages": [
-                    {"role": "system", "content": "شما یک تحلیلگر حرفه‌ای بازارهای مالی هستید. همیشه به صورت JSON و با ساختار مشخص پاسخ دهید."},
+                    {"role": "system", "content": "شما یک تحلیلگر حرفهای بازارهای مالی هستید. همیشه به صورت JSON و با ساختار مشخص پاسخ دهید."},
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": self.config.AI_TEMPERATURE,
@@ -388,7 +445,7 @@ class AIAnalyzer:
                 return self._parse_text_response(response, signal_data)
             
             # =========================
-            # استخراج فیلدها با مقدار پیش‌فرض
+            # استخراج فیلدها با مقدار پیشفرض
             # =========================
             opinion = data.get('opinion', 'NEUTRAL').upper()
             if opinion not in ['BUY', 'SELL', 'WAIT', 'NEUTRAL']:
@@ -409,7 +466,7 @@ class AIAnalyzer:
             recommendation = data.get('recommendation', '')
             
             # =========================
-            # تشخیص اختلاف نظر با ربات (نرمال‌سازی شده)
+            # تشخیص اختلاف نظر با ربات (نرمالسازی شده)
             # =========================
             robot_signal = self._normalize_signal(signal_data.get('signal', 'WAIT'))
             disagreement = False
@@ -438,7 +495,7 @@ class AIAnalyzer:
     
     def _normalize_signal(self, signal: str) -> str:
         """
-        نرمال‌سازی سیگنال ربات برای مقایسه با AI
+        نرمالسازی سیگنال ربات برای مقایسه با AI
         """
         signal = signal.upper()
         if 'BUY' in signal:
@@ -548,7 +605,7 @@ class AIAnalyzer:
         
         negative = ai_result.get('negative_factors', [])
         if negative:
-            parts.append("🔴 <b>عوامل منفی/ریسک‌ها:</b>")
+            parts.append("🔴 <b>عوامل منفی/ریسکها:</b>")
             for factor in negative[:3]:
                 parts.append(f"• {factor}")
             parts.append("")
