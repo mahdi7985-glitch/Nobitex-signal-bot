@@ -26,6 +26,8 @@ class BaleBot:
         self.token = config.BALE_BOT_TOKEN
         self.chat_id = config.BALE_CHAT_ID
         self.max_retries = 3
+        # ✅ اصلاح: آدرس API بر اساس مستندات بله
+        self.base_url = "https://tapi.bale.ai"
         
     def send_message(self, text: str, parse_mode: str = "HTML", max_retries: int = 3) -> bool:
         """
@@ -46,11 +48,14 @@ class BaleBot:
         if not self.token or not self.chat_id:
             logger.warning("⚠️ توکن یا آیدی بله تنظیم نشده")
             return False
+        
+        # ✅ اصلاح: حذف /v1/ از آدرس
+        url = f"{self.base_url}/bot{self.token}/sendMessage"
             
         for attempt in range(max_retries):
             try:
                 response = requests.post(
-                    f"https://tapi.bale.ai/v1/bot{self.token}/sendMessage",
+                    url,
                     json={
                         'chat_id': self.chat_id,
                         'text': text,
@@ -66,22 +71,37 @@ class BaleBot:
                         return True
                     else:
                         logger.error(f"❌ خطای API بله: {data}")
+                        # بررسی خطاهای رایج
+                        error_code = data.get('error_code')
+                        if error_code == 404:
+                            logger.error("❌ ربات پیدا نشد - توکن یا آیدی چت اشتباه است")
+                        elif error_code == 403:
+                            logger.error("❌ دسترسی غیرمجاز - ربات به چت دسترسی ندارد")
                         return False
+                elif response.status_code == 404:
+                    logger.error(f"❌ آدرس API اشتباه است: {url}")
+                    logger.error("❌ مسیر صحیح: https://tapi.bale.ai/bot<TOKEN>/sendMessage")
+                    return False
                 elif response.status_code == 503:
-                    logger.warning(f"⚠️ خطای ۵۰۳، تلاش {attempt+1}/{max_retries}")
+                    logger.warning(f"⚠️ خطای ۵۰۳ (سرویس در دسترس نیست)، تلاش {attempt+1}/{max_retries}")
                     time.sleep(5)
                 else:
                     logger.error(f"❌ HTTP error {response.status_code}: {response.text}")
+                    if attempt < max_retries - 1:
+                        time.sleep(3)
                     
             except requests.exceptions.Timeout:
                 logger.error(f"❌ Timeout (تلاش {attempt+1}/{max_retries})")
-                time.sleep(3)
+                if attempt < max_retries - 1:
+                    time.sleep(3)
             except requests.exceptions.RequestException as e:
                 logger.error(f"❌ خطای شبکه: {e}")
-                time.sleep(3)
+                if attempt < max_retries - 1:
+                    time.sleep(3)
             except Exception as e:
                 logger.error(f"❌ خطای غیرمنتظره: {e}")
-                time.sleep(3)
+                if attempt < max_retries - 1:
+                    time.sleep(3)
         
         logger.error("❌ ارسال به بله پس از تلاش‌های مجدد ناموفق بود.")
         return False
