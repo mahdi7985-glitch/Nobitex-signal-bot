@@ -43,11 +43,11 @@ class Config:
     BALE_CHAT_ID = os.getenv("BALE_CHAT_ID")
 
     # AI Settings (قابل تغییر از .env)
-    AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")
-    AI_MODEL = os.getenv("AI_MODEL", "gpt-3.5-turbo")
+    AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini")
+    AI_MODEL = os.getenv("AI_MODEL", "gemini-2.5-flash")
     AI_API_KEY = os.getenv("AI_API_KEY")
     AI_REQUIRED = os.getenv("AI_REQUIRED", "false").lower() == "true"
-
+    ENABLE_AI_ANALYSIS = os.getenv("ENABLE_AI_ANALYSIS", "true").lower() == "true"  # ✅ اضافه کنید
     # =========================
     # SYMBOLS
     # =========================
