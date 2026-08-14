@@ -247,6 +247,7 @@ class Config:
     }
 
     MIN_SIGNAL_SCORE = 60
+    MIN_SCORE = 60  # 👈 این خط اضافه شده
     WEAK_SIGNAL_SCORE = 60
     NORMAL_SIGNAL_SCORE = 70
     STRONG_SIGNAL_SCORE = 80
