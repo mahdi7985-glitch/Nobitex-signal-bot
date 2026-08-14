@@ -210,6 +210,21 @@ class Config:
     MAX_SL_PERCENT = 10.0
 
     # =========================
+    # SUPPORT/RESISTANCE PARAMETERS
+    # =========================
+    LEFT_BARS = 2                       # تعداد کندل‌های قبل برای تشخیص Swing
+    RIGHT_BARS = 2                      # تعداد کندل‌های بعد برای تشخیص Swing
+    SR_CLUSTER_DISTANCE_ATR = 0.5       # فاصله خوشه‌بندی سطوح (ضریب ATR)
+    SR_TOLERANCE_ATR = 0.5              # محدوده برخورد با سطح (ضریب ATR)
+    MIN_SR_TOUCHES = 2                  # حداقل برخورد مجزا برای اعتبار سطح
+
+    # =========================
+    # SR FILTER SETTINGS
+    # =========================
+    ENABLE_SR_FILTER = True             # فعال/غیرفعال کردن فیلتر S/R
+    SR_REJECT_LOW_RR = True             # رد معامله اگر RR تا S/R کمتر از MIN_ACCEPTABLE_RR باشد
+
+    # =========================
     # VOLUME ANALYSIS
     # =========================
     VOLUME_MA_PERIOD = 20
@@ -431,5 +446,8 @@ class Config:
         ✅ News Enabled: {cls.ENABLE_NEWS_ANALYSIS}
         ✅ Test Mode: {cls.TEST_MODE}
         ✅ Risk per Trade: {cls.ATR_SL_MULTIPLIER}x ATR
+        ✅ S/R Filter: ENABLED={cls.ENABLE_SR_FILTER}
+        ✅ S/R Reject Low RR: {cls.SR_REJECT_LOW_RR}
+        ✅ S/R Bars: LEFT={cls.LEFT_BARS}, RIGHT={cls.RIGHT_BARS}
         ===================================
         """
