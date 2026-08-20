@@ -7,7 +7,7 @@ import logging
 import time
 import sys
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from config import Config
 from src.data_fetcher import NobitexDataFetcher
@@ -67,6 +67,19 @@ class CryptoSignalBot:
         logger.info("🚀 Crypto Signal Bot initialized")
         logger.info(self.config.get_config_summary())
     
+    def _extract_indicator_scores(self, result: Dict[str, Any]) -> Dict[str, float]:
+        """استخراج امتیاز اندیکاتورها از score_breakdown"""
+        score_breakdown = result.get('score_breakdown', {})
+        return {
+            'trend': score_breakdown.get('trend', 0),
+            'momentum': score_breakdown.get('momentum', 0),
+            'volume': score_breakdown.get('volume', 0),
+            'volatility': score_breakdown.get('volatility', 0),
+            'breakout': score_breakdown.get('breakout', 0),
+            'support_resistance': score_breakdown.get('support_resistance', 0),
+            'adx': score_breakdown.get('adx', 0)
+        }
+    
     def run_once(self) -> bool:
         """یک بار اجرای کامل ربات"""
         logger.info("=" * 50)
@@ -105,13 +118,18 @@ class CryptoSignalBot:
                     
                 try:
                     result = self.signal_engine.analyze_symbol(
-                        data['df'], 
-                        symbol, 
-                        data['price']
+                        df=data['df'],
+                        symbol=symbol,
+                        current_price=data['price'],
+                        data_quality=data.get('data_quality')
                     )
                     
                     if result:
+                        # استخراج indicator_scores
+                        result['indicator_scores'] = self._extract_indicator_scores(result)
+                        result['data_quality'] = data.get('data_quality')
                         all_results.append(result)
+                        
                         self.last_signals[symbol] = {
                             'signal': result.get('signal'),
                             'score': result.get('score'),
@@ -153,8 +171,27 @@ class CryptoSignalBot:
             
             self._send_messages(all_results, signals_to_send, ai_results)
             
+            # ================================================
+            # ذخیره سیگنال‌ها در Performance Tracker
+            # ================================================
             if all_results:
+                # اطمینان از وجود indicator_scores در همه سیگنال‌ها
+                for result in all_results:
+                    if 'indicator_scores' not in result:
+                        result['indicator_scores'] = self._extract_indicator_scores(result)
+                
                 self.performance_tracker.save_signals(all_results)
+                logger.info(f"💾 Saved {len(all_results)} signals to performance tracker")
+            
+            # ================================================
+            # نمایش خلاصه عملکرد اندیکاتورها
+            # ================================================
+            if len(self.performance_tracker.closed_signals) >= 10:
+                best_indicators = self.performance_tracker.get_best_indicators(3)
+                if best_indicators:
+                    logger.info("📊 Best indicators:")
+                    for item in best_indicators:
+                        logger.info(f"  - {item['indicator']}: effectiveness={item['effectiveness']:.3f}, win_rate={item['win_rate']:.1f}%")
             
             logger.info(f"✅ Scan completed. {len(all_results)} signals generated, {len(signals_to_send)} sent.")
             logger.info("=" * 50)
@@ -184,7 +221,14 @@ class CryptoSignalBot:
                     logger.warning(f"⚠️ Insufficient data for {symbol}")
                     continue
                 
-                market_data[symbol] = {'df': df, 'price': None}
+                # دریافت Data Quality از DataFetcher
+                data_quality = self.data_fetcher.get_data_quality(symbol)
+                
+                market_data[symbol] = {
+                    'df': df,
+                    'price': None,
+                    'data_quality': data_quality
+                }
                 
             except Exception as e:
                 logger.error(f"❌ Error fetching data for {symbol}: {e}")
@@ -197,6 +241,7 @@ class CryptoSignalBot:
                 if symbol in market_data and price:
                     market_data[symbol]['price'] = price
         
+        # حذف ارزهایی که قیمت ندارند
         market_data = {k: v for k, v in market_data.items() if v['price'] is not None}
         
         logger.info(f"✅ Fetched data for {len(market_data)} symbols")
