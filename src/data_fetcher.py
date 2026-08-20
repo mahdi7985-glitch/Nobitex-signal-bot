@@ -1,4 +1,3 @@
-```python
 """
 Data Fetcher Module
 Responsible for fetching OHLCV and current price from Nobitex API
