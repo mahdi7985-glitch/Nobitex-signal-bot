@@ -145,6 +145,37 @@ class Config:
         "PAXG": "PAXG-USDT",
     }
 
+     # =========================
+# SRC CURRENCY MAPPING - برای دریافت قیمت
+# =========================
+SRC_CURRENCY_MAP = {
+    "BTC": "BTC",
+    "ETH": "ETH",
+    "DOGE": "DOGE",
+    "SOL": "SOL",
+    "XRP": "XRP",
+    "ADA": "ADA",
+    "TRX": "TRX",
+    "ATOM": "ATOM",
+    "DOT": "DOT",
+    "XLM": "XLM",
+    "ZEC": "ZEC",
+    "CRV": "CRV",
+    "DEXE": "DEXE",
+    "SHIB": "1K_SHIB",
+    "GRAM": "GRAM",
+    "BICO": "BICO",
+    "HOME": "HOME",
+    "APT": "APT",
+    "PUMP": "PUMP",
+    "PROM": "PROM",
+    "BANK": "BANK",
+    "HMSTR": "HMSTR",
+    "DOGS": "DOGS",
+    "COOKIE": "COOKIE",
+    "XAUT": "XAUT",
+    "PAXG": "PAXG",
+}
     # =========================
     # ENABLE/DISABLE SYMBOLS
     # =========================
