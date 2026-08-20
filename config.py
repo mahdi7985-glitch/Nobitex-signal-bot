@@ -47,7 +47,8 @@ class Config:
     AI_MODEL = os.getenv("AI_MODEL", "gemini-2.5-flash")
     AI_API_KEY = os.getenv("AI_API_KEY")
     AI_REQUIRED = os.getenv("AI_REQUIRED", "false").lower() == "true"
-    ENABLE_AI_ANALYSIS = os.getenv("ENABLE_AI_ANALYSIS", "true").lower() == "true"  # ✅ اضافه کنید
+    ENABLE_AI_ANALYSIS = os.getenv("ENABLE_AI_ANALYSIS", "true").lower() == "true"
+
     # =========================
     # SYMBOLS
     # =========================
@@ -212,17 +213,17 @@ class Config:
     # =========================
     # SUPPORT/RESISTANCE PARAMETERS
     # =========================
-    LEFT_BARS = 2                       # تعداد کندل‌های قبل برای تشخیص Swing
-    RIGHT_BARS = 2                      # تعداد کندل‌های بعد برای تشخیص Swing
-    SR_CLUSTER_DISTANCE_ATR = 0.5       # فاصله خوشه‌بندی سطوح (ضریب ATR)
-    SR_TOLERANCE_ATR = 0.5              # محدوده برخورد با سطح (ضریب ATR)
-    MIN_SR_TOUCHES = 2                  # حداقل برخورد مجزا برای اعتبار سطح
+    LEFT_BARS = 2
+    RIGHT_BARS = 2
+    SR_CLUSTER_DISTANCE_ATR = 0.5
+    SR_TOLERANCE_ATR = 0.5
+    MIN_SR_TOUCHES = 2
 
     # =========================
     # SR FILTER SETTINGS
     # =========================
-    ENABLE_SR_FILTER = True             # فعال/غیرفعال کردن فیلتر S/R
-    SR_REJECT_LOW_RR = True             # رد معامله اگر RR تا S/R کمتر از MIN_ACCEPTABLE_RR باشد
+    ENABLE_SR_FILTER = True
+    SR_REJECT_LOW_RR = True
 
     # =========================
     # VOLUME ANALYSIS
@@ -247,7 +248,10 @@ class Config:
     }
 
     MIN_SIGNAL_SCORE = 60
-    MIN_SCORE = 60  # 👈 این خط اضافه شده
+    MIN_SCORE = 80              # حداقل Score برای BUY (SELL از این مقدار مستثنی است)
+    MIN_DATA_QUALITY = 70
+    MAX_RR_FOR_PRIORITY = 4.0
+
     WEAK_SIGNAL_SCORE = 60
     NORMAL_SIGNAL_SCORE = 70
     STRONG_SIGNAL_SCORE = 80
@@ -259,6 +263,16 @@ class Config:
         "macd_strong_momentum": True,
         "support_resistance_break": True,
     }
+
+    # =========================
+    # RISK MANAGEMENT
+    # =========================
+    MIN_ACCEPTABLE_RR = 1.5
+
+    # =========================
+    # SELL SIGNAL REQUIREMENTS
+    # =========================
+    MIN_SELL_CONFIDENCE = 75
 
     # =========================
     # HISTORICAL CONFIDENCE
@@ -292,9 +306,9 @@ class Config:
     NITRIMO_QUICK_LOOK_SELECTOR = ".quick-look, .radar-quick, .summary"
 
     NEWS_ITEM_SELECTORS = [
-        '.news-item', 
-        '.post-item', 
-        '.article-item', 
+        '.news-item',
+        '.post-item',
+        '.article-item',
         '.radar-item',
         '.news-card',
         '.post-card'
@@ -343,11 +357,6 @@ class Config:
 
     پاسخ را به صورت ساختاریافته و در ۵-۷ خط خلاصه کنید.
     """
-
-    # =========================
-    # RISK MANAGEMENT
-    # =========================
-    MIN_ACCEPTABLE_RR = 1.5
 
     # =========================
     # SEND SETTINGS
@@ -441,7 +450,10 @@ class Config:
         ✅ Symbols: {len(active_symbols)} active
         ✅ Timeframe: {cls.TIMEFRAME}
         ✅ Scan Interval: {cls.SCAN_INTERVAL}s
-        ✅ Min Score: {cls.MIN_SIGNAL_SCORE}
+        ✅ Min Score for BUY: {cls.MIN_SCORE}
+        ✅ Min Data Quality: {cls.MIN_DATA_QUALITY}
+        ✅ Min Acceptable RR: {cls.MIN_ACCEPTABLE_RR}
+        ✅ Min SELL Confidence: {cls.MIN_SELL_CONFIDENCE}
         ✅ AI Enabled: {cls.ENABLE_AI_ANALYSIS}
         ✅ AI Required: {cls.AI_REQUIRED}
         ✅ News Enabled: {cls.ENABLE_NEWS_ANALYSIS}
