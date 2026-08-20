@@ -206,9 +206,16 @@ class CryptoSignalBot:
             return False
     
     def _fetch_market_data(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
-        """دریافت داده بازار برای همه ارزها"""
+        """
+        دریافت داده بازار برای همه ارزها
+        
+        با دریافت OHLCV و سپس قیمت به صورت تکی (به جای Batch)
+        """
         market_data = {}
         
+        # =========================
+        # مرحله 1: دریافت OHLCV
+        # =========================
         for symbol in symbols:
             try:
                 df = self.data_fetcher.get_ohlcv(
@@ -221,7 +228,6 @@ class CryptoSignalBot:
                     logger.warning(f"⚠️ Insufficient data for {symbol}")
                     continue
                 
-                # دریافت Data Quality از DataFetcher
                 data_quality = self.data_fetcher.get_data_quality(symbol)
                 
                 market_data[symbol] = {
@@ -231,18 +237,28 @@ class CryptoSignalBot:
                 }
                 
             except Exception as e:
-                logger.error(f"❌ Error fetching data for {symbol}: {e}")
+                logger.error(f"❌ Error fetching OHLCV for {symbol}: {e}")
                 continue
         
-        if market_data:
-            symbols_with_data = list(market_data.keys())
-            prices = self.data_fetcher.get_multiple_prices(symbols_with_data)
-            for symbol, price in prices.items():
-                if symbol in market_data and price:
-                    market_data[symbol]['price'] = price
+        if not market_data:
+            logger.warning("⚠️ No market data available after OHLCV fetch")
+            return {}
         
-        # حذف ارزهایی که قیمت ندارند
-        market_data = {k: v for k, v in market_data.items() if v['price'] is not None}
+        # =========================
+        # مرحله 2: دریافت قیمت‌ها (تکی)
+        # =========================
+        symbols_with_data = list(market_data.keys())
+        for symbol in symbols_with_data:
+            try:
+                price = self.data_fetcher.get_current_price(symbol)
+                if price:
+                    market_data[symbol]['price'] = price
+                else:
+                    logger.warning(f"⚠️ No price for {symbol}, removing from analysis")
+                    del market_data[symbol]
+            except Exception as e:
+                logger.error(f"❌ Error getting price for {symbol}: {e}")
+                del market_data[symbol]
         
         logger.info(f"✅ Fetched data for {len(market_data)} symbols")
         return market_data
