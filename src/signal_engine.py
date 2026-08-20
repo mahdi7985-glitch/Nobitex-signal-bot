@@ -767,7 +767,7 @@ class SignalEngine:
             exceptional_reason = "very_strong_uptrend_confirmed"
 
         # ================================================
-        # EXCEPTIONAL SELL (متقارن)
+        # EXCEPTIONAL SELL (متقارن + تأییدات اضافی)
         # ================================================
         elif (
             score <= 15 and
@@ -775,6 +775,7 @@ class SignalEngine:
             di_minus > di_plus and
             macd_line is not None and macd_signal is not None and
             macd_line < macd_signal and
+            macd_hist < 0 and
             volume_ratio > 1.5
         ):
             exceptional = True
@@ -800,6 +801,9 @@ class SignalEngine:
                 exceptional = True
                 exceptional_reason = "breakout_resistance_with_high_volume"
 
+            # ================================================
+            # BREAKOUT EXCEPTIONAL SELL (متقارن + تأییدات اضافی)
+            # ================================================
             elif (
                 score <= 20 and
                 support is not None and
@@ -814,7 +818,6 @@ class SignalEngine:
 
         # ================================================
         # تعیین سیگنال اصلی (متقارن)
-        # Score >= 70 → BUY, Score <= 30 → SELL
         # ================================================
         if score >= 70:
             action = "BUY"
@@ -840,6 +843,47 @@ class SignalEngine:
                 'exceptional': False,
                 'exceptional_reason': None
             }
+
+        # ================================================
+        # بررسی تأییدات اضافی برای SELL
+        # (این شروط فقط برای SELL اعمال میشوند)
+        # ================================================
+        if action == "SELL":
+            # شرایط موردنیاز برای SELL:
+            # 1. DI- > DI+
+            # 2. MACD Line < MACD Signal
+            # 3. MACD Histogram < 0
+            # 4. ADX >= 25
+            sell_conditions_met = (
+                di_minus > di_plus and
+                macd_line is not None and
+                macd_signal is not None and
+                macd_line < macd_signal and
+                macd_hist < 0 and
+                adx >= 25
+            )
+            
+            if not sell_conditions_met:
+                # تعریف شرط MACD به صورت صحیح برای لاگ
+                macd_condition = (
+                    macd_line is not None and
+                    macd_signal is not None and
+                    macd_line < macd_signal
+                )
+                logger.debug(
+                    f"SELL conditions not met: "
+                    f"DI-={di_minus:.1f} > DI+={di_plus:.1f} = {di_minus > di_plus}, "
+                    f"MACD={macd_line} < Signal={macd_signal} = {macd_condition}, "
+                    f"Hist={macd_hist} < 0 = {macd_hist < 0}, "
+                    f"ADX={adx:.1f} >= 25 = {adx >= 25}"
+                )
+                return {
+                    'action': 'WAIT',
+                    'strength': 'NEUTRAL',
+                    'confidence': 50,
+                    'exceptional': False,
+                    'exceptional_reason': 'SELL conditions not met'
+                }
 
         # اگر Exceptional است و شرایطش برقرار است
         if exceptional:
