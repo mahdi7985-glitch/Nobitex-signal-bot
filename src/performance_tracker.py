@@ -24,16 +24,19 @@ class PerformanceTracker:
     - Profit Factor: سود کل / ضرر کل
     - Max Drawdown: حداکثر افت
     - Error Analysis: دلیل شکست
+    - Indicator Performance: Effectiveness هر اندیکاتور
     """
     
     def __init__(self, config=Config):
         self.config = config
         self.signals_file = config.SIGNALS_DIR / "signals_history.json"
         self.performance_file = config.SIGNALS_DIR / "performance.json"
+        self.indicator_performance_file = config.SIGNALS_DIR / "indicator_performance.json"
         
         # بارگذاری داده‌های قبلی
         self.signals = self._load_signals()
         self.performance = self._load_performance()
+        self.indicator_performance = self._load_indicator_performance()
         self.closed_signals = [s for s in self.signals if s.get('outcome') in ['WIN', 'LOSS']]
         
     def _load_signals(self) -> List[Dict[str, Any]]:
@@ -56,6 +59,16 @@ class PerformanceTracker:
                 logger.error(f"Error loading performance: {e}")
         return {}
     
+    def _load_indicator_performance(self) -> Dict[str, Any]:
+        """بارگذاری داده‌های عملکرد اندیکاتورها"""
+        if self.indicator_performance_file.exists():
+            try:
+                with open(self.indicator_performance_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Error loading indicator performance: {e}")
+        return {}
+    
     def save_signals(self, new_signals: List[Dict[str, Any]]):
         """ذخیره سیگنال‌های جدید"""
         if not new_signals:
@@ -70,6 +83,8 @@ class PerformanceTracker:
                 signal['r_value'] = 0.0
             if 'failure_reason' not in signal:
                 signal['failure_reason'] = None
+            if 'indicator_scores' not in signal:
+                signal['indicator_scores'] = {}
         
         self.signals.extend(new_signals)
         
@@ -78,6 +93,7 @@ class PerformanceTracker:
         
         self._update_closed_signals()
         self._save_performance()
+        self._update_indicator_performance()
         
         try:
             with open(self.signals_file, 'w') as f:
@@ -124,6 +140,7 @@ class PerformanceTracker:
                 
                 self._update_closed_signals()
                 self._save_performance()
+                self._update_indicator_performance()
                 self._save_signals()
                 
                 logger.info(f"✅ Closed {symbol} {signal_type}: {outcome} (R={r_value:.2f})")
@@ -147,6 +164,76 @@ class PerformanceTracker:
                 json.dump(perf, f, indent=2)
         except Exception as e:
             logger.error(f"Error saving performance: {e}")
+    
+    def _update_indicator_performance(self):
+        """به‌روزرسانی عملکرد اندیکاتورها"""
+        if len(self.closed_signals) < 10:
+            return
+        
+        # گروه‌بندی بر اساس نام اندیکاتور
+        indicator_data = {}
+        
+        for signal in self.closed_signals:
+            scores = signal.get('indicator_scores', {})
+            outcome = signal.get('outcome', 'LOSS')
+            r_value = signal.get('r_value', 0)
+            
+            for indicator, score in scores.items():
+                if indicator not in indicator_data:
+                    indicator_data[indicator] = {
+                        'wins': [],
+                        'losses': [],
+                        'total_win_r': 0,
+                        'total_loss_r': 0,
+                        'win_count': 0,
+                        'loss_count': 0
+                    }
+                
+                if outcome == 'WIN':
+                    indicator_data[indicator]['wins'].append(score)
+                    indicator_data[indicator]['win_count'] += 1
+                    indicator_data[indicator]['total_win_r'] += r_value
+                else:
+                    indicator_data[indicator]['losses'].append(score)
+                    indicator_data[indicator]['loss_count'] += 1
+                    indicator_data[indicator]['total_loss_r'] += abs(r_value)
+        
+        # محاسبه effectiveness هر اندیکاتور
+        result = {}
+        for indicator, data in indicator_data.items():
+            win_avg = sum(data['wins']) / len(data['wins']) if data['wins'] else 0
+            loss_avg = sum(data['losses']) / len(data['losses']) if data['losses'] else 0
+            win_rate = data['win_count'] / (data['win_count'] + data['loss_count']) if (data['win_count'] + data['loss_count']) > 0 else 0
+            
+            # معیارهای effectiveness
+            score_diff = win_avg - loss_avg
+            normalized_score = score_diff / 20  # نرمال‌سازی (چون حداکثر امتیاز هر اندیکاتور 20 است)
+            
+            # R-adjusted effectiveness
+            avg_r_win = data['total_win_r'] / data['win_count'] if data['win_count'] > 0 else 0
+            avg_r_loss = data['total_loss_r'] / data['loss_count'] if data['loss_count'] > 0 else 0
+            r_effectiveness = avg_r_win - avg_r_loss
+            
+            result[indicator] = {
+                'win_avg_score': round(win_avg, 2),
+                'loss_avg_score': round(loss_avg, 2),
+                'score_effectiveness': round(normalized_score, 3),
+                'win_count': data['win_count'],
+                'loss_count': data['loss_count'],
+                'win_rate': round(win_rate * 100, 1),
+                'avg_r_win': round(avg_r_win, 2),
+                'avg_r_loss': round(avg_r_loss, 2),
+                'r_effectiveness': round(r_effectiveness, 2),
+                'total_signals': data['win_count'] + data['loss_count']
+            }
+        
+        self.indicator_performance = result
+        
+        try:
+            with open(self.indicator_performance_file, 'w') as f:
+                json.dump(result, f, indent=2)
+        except Exception as e:
+            logger.error(f"Error saving indicator performance: {e}")
     
     def _calculate_performance(self) -> Dict[str, Any]:
         """محاسبه آمار عملکرد از سیگنال‌های بسته‌شده"""
@@ -182,7 +269,7 @@ class PerformanceTracker:
         total_loss = abs(sum(s.get('r_value', 0) for s in losses))
         profit_factor = total_profit / total_loss if total_loss > 0 else float('inf')
         
-        # Max Drawdown (محاسبه ساده)
+        # Max Drawdown
         max_drawdown = self._calculate_max_drawdown()
         
         # Failure Reasons
@@ -210,7 +297,6 @@ class PerformanceTracker:
         if not self.closed_signals:
             return 0.0
         
-        # مرتب‌سازی بر اساس زمان
         sorted_signals = sorted(
             self.closed_signals, 
             key=lambda x: x.get('_saved_at', '')
@@ -236,13 +322,7 @@ class PerformanceTracker:
         return max_dd * 100
     
     def get_win_rate(self, symbol: Optional[str] = None, signal_type: Optional[str] = None) -> float:
-        """
-        دریافت نرخ موفقیت
-        
-        Args:
-            symbol: نام نماد (اختیاری)
-            signal_type: نوع سیگنال (اختیاری)
-        """
+        """دریافت نرخ موفقیت"""
         filtered = self.closed_signals
         
         if symbol:
@@ -258,11 +338,7 @@ class PerformanceTracker:
         return (wins / len(filtered)) * 100
     
     def get_confidence_boost(self, symbol: str, signal_type: str) -> float:
-        """
-        دریافت ضریب اطمینان بر اساس عملکرد تاریخی
-        
-        با وزن‌دهی بر اساس تعداد نمونه‌ها
-        """
+        """دریافت ضریب اطمینان بر اساس عملکرد تاریخی"""
         filtered = [s for s in self.closed_signals 
                    if s.get('symbol') == symbol and s.get('signal') == signal_type]
         
@@ -273,10 +349,8 @@ class PerformanceTracker:
         wins = len([s for s in filtered if s.get('outcome') == 'WIN'])
         win_rate = wins / total if total > 0 else 0
         
-        # محاسبه وزن بر اساس تعداد نمونه
-        weight = min(1.0, total / 30)  # 30 نمونه = وزن کامل
+        weight = min(1.0, total / 30)
         
-        # تبدیل win_rate به ضریب اطمینان
         if win_rate > 0.6:
             boost = 0.1
         elif win_rate > 0.5:
@@ -287,6 +361,68 @@ class PerformanceTracker:
             boost = -0.2
         
         return round(boost * weight, 2)
+    
+    def get_indicator_effectiveness(self) -> Dict[str, Any]:
+        """
+        دریافت effectiveness هر اندیکاتور
+        
+        Returns:
+            دیکشنری با effectiveness هر اندیکاتور
+        """
+        if not self.indicator_performance:
+            return {}
+        
+        # مرتب‌سازی بر اساس score_effectiveness
+        sorted_indicators = sorted(
+            self.indicator_performance.items(),
+            key=lambda x: x[1].get('score_effectiveness', 0),
+            reverse=True
+        )
+        
+        result = {}
+        for indicator, data in sorted_indicators:
+            result[indicator] = {
+                'effectiveness': data.get('score_effectiveness', 0),
+                'r_effectiveness': data.get('r_effectiveness', 0),
+                'win_rate': data.get('win_rate', 0),
+                'signals': data.get('total_signals', 0),
+                'score_diff': round(data.get('win_avg_score', 0) - data.get('loss_avg_score', 0), 2)
+            }
+        
+        return result
+    
+    def get_best_indicators(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        دریافت بهترین اندیکاتورها بر اساس effectiveness
+        
+        Args:
+            limit: تعداد اندیکاتورهای برتر
+            
+        Returns:
+            لیست اندیکاتورهای برتر
+        """
+        effectiveness = self.get_indicator_effectiveness()
+        
+        if not effectiveness:
+            return []
+        
+        sorted_items = sorted(
+            effectiveness.items(),
+            key=lambda x: x[1].get('effectiveness', 0),
+            reverse=True
+        )
+        
+        result = []
+        for indicator, data in sorted_items[:limit]:
+            result.append({
+                'indicator': indicator,
+                'effectiveness': data.get('effectiveness', 0),
+                'r_effectiveness': data.get('r_effectiveness', 0),
+                'win_rate': data.get('win_rate', 0),
+                'signals': data.get('signals', 0)
+            })
+        
+        return result
     
     def get_performance_summary(self) -> Dict[str, Any]:
         """دریافت خلاصه عملکرد کلی"""
@@ -354,10 +490,13 @@ class PerformanceTracker:
         self.signals = []
         self.closed_signals = []
         self.performance = {}
+        self.indicator_performance = {}
         
         if self.signals_file.exists():
             self.signals_file.unlink()
         if self.performance_file.exists():
             self.performance_file.unlink()
+        if self.indicator_performance_file.exists():
+            self.indicator_performance_file.unlink()
         
         logger.info("🔄 Performance data reset")
