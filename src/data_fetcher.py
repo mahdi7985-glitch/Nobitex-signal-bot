@@ -1018,4 +1018,3 @@ class NobitexDataFetcher:
         self.cache.clear()
         self.data_quality_cache.clear()
         logger.info("Cache cleared")
-```
