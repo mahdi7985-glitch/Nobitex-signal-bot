@@ -106,14 +106,41 @@ class BaleBot:
         return f"{weekday} {day} {self.MONTHS_FA[month-1]} {year} - ساعت {tehran.strftime('%H:%M')}"
     
     def _format_number_fa(self, num: float) -> str:
-        """تبدیل عدد به فارسی با جداکننده هزارگان"""
+        """
+        تبدیل عدد به فارسی با جداکننده هزارگان و تشخیص خودکار تعداد ارقام اعشار
+        
+        - قیمت‌های بالای ۱۰۰۰: ۲ رقم اعشار
+        - قیمت‌های بالای ۱: ۴ رقم اعشار
+        - قیمت‌های بالای ۰.۰۱: ۶ رقم اعشار
+        - قیمت‌های بالای ۰.۰۰۰۱: ۸ رقم اعشار
+        - بقیه: ۱۰ رقم اعشار
+        """
         if num is None:
             return '—'
         
-        # جداکننده هزارگان
-        parts = f"{num:,.2f}".split('.')
+        # =========================
+        # تشخیص تعداد ارقام اعشار بر اساس قیمت
+        # =========================
+        if num >= 1000:
+            decimals = 2
+        elif num >= 1:
+            decimals = 4
+        elif num >= 0.01:
+            decimals = 6
+        elif num >= 0.0001:
+            decimals = 8
+        else:
+            decimals = 10
+        
+        # فرمت با اعشار مشخص
+        parts = f"{num:,.{decimals}f}".split('.')
         integer_part = parts[0]
-        decimal_part = parts[1] if len(parts) > 1 else '00'
+        decimal_part = parts[1] if len(parts) > 1 else ''
+        
+        # حذف صفرهای بی‌مورد از انتهای اعشار
+        decimal_part = decimal_part.rstrip('0')
+        if not decimal_part:
+            decimal_part = '0'
         
         # تبدیل به فارسی
         fa_digits = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴',
@@ -122,6 +149,8 @@ class BaleBot:
         integer_fa = ''.join(fa_digits.get(c, c) for c in integer_part)
         decimal_fa = ''.join(fa_digits.get(c, c) for c in decimal_part)
         
+        if decimal_part == '0':
+            return integer_fa
         return f"{integer_fa}.{decimal_fa}"
     
     # ============================================================
