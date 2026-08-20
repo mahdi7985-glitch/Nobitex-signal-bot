@@ -29,7 +29,7 @@ class DataQuality:
         raw_df: pd.DataFrame,
         cleaned_df: pd.DataFrame,
         cleaned_before_incomplete_df: pd.DataFrame,
-        final_closed_df: pd.DataFrame,
+        valid_candles: pd.DataFrame,
         symbol: str,
         timeframe: str,
         removal_stats: Dict[str, int],
@@ -48,7 +48,7 @@ class DataQuality:
         self.requested_candles = requested_candles
         self.raw_candles = len(raw_df)
         self.cleaned_candles = len(cleaned_df)
-        self.valid_candles = len(final_closed_df)
+        self.valid_candles = len(valid_candles)
         self.removal_stats = removal_stats
         self.incomplete_candle_removed = incomplete_candle_removed
         self.fetch_timestamp_utc = fetch_timestamp_utc or datetime.now(timezone.utc)
@@ -77,10 +77,10 @@ class DataQuality:
         self.final_loss = self.raw_candles - self.valid_candles
         
         # Check stale
-        self.is_stale = self._check_stale_data(final_closed_df)
+        self.is_stale = self._check_stale_data(valid_candles)
         
         # Validate - PURE DATA QUALITY ONLY
-        self.is_valid = self._validate_data(final_closed_df)
+        self.is_valid = self._validate_data(valid_candles)
         
         # Quality score - PURE DATA QUALITY ONLY (0-100)
         self.quality_score = self._calculate_quality_score()
@@ -793,14 +793,14 @@ class NobitexDataFetcher:
             incomplete_removed = len(cleaned_df) < len(cleaned_before_incomplete)
 
             # --- 5. FINAL CLOSED CANDLES ---
-            final_closed_df = cleaned_df.copy()
+            valid_candles = cleaned_df.copy()
 
             # --- 6. QUALITY REPORT ---
             quality = DataQuality(
                 raw_df=raw_df,
                 cleaned_df=cleaned_df,
                 cleaned_before_incomplete_df=cleaned_before_incomplete,
-                final_closed_df=final_closed_df,
+                valid_candles=valid_candles,
                 symbol=symbol,
                 timeframe=timeframe,
                 removal_stats=removal_stats,
@@ -841,10 +841,10 @@ class NobitexDataFetcher:
 
             # --- 7. CACHE ---
             if Config.ENABLE_CACHE:
-                self.cache[cache_key] = (datetime.now(), final_closed_df.copy())
+                self.cache[cache_key] = (datetime.now(), valid_candles.copy())
 
-            logger.info(f"✅ {symbol}: {len(final_closed_df)} valid closed candles")
-            return final_closed_df
+            logger.info(f"✅ {symbol}: {len(valid_candles)} valid closed candles")
+            return valid_candles
 
         except requests.exceptions.Timeout:
             logger.error(f"❌ TIMEOUT: {symbol}")
