@@ -5,7 +5,8 @@ Calculates all technical indicators using the 'ta' library
 
 import logging
 import pandas as pd
-from typing import Optional, Dict, Union
+import numpy as np
+from typing import Optional, Dict, Union, List, Tuple
 
 from ta.momentum import RSIIndicator
 from ta.trend import EMAIndicator, MACD, ADXIndicator, SMAIndicator
@@ -34,7 +35,7 @@ class TechnicalIndicators:
             config.MACD_SLOW,          # 26 برای MACD
             config.ATR_PERIOD,         # 14 برای ATR
             config.ADX_PERIOD,         # 14 برای ADX
-            config.CANDLES_LIMIT       # 300 برای هماهنگی با DataFetcher
+            config.CANDLES_LIMIT       # 500 برای هماهنگی با DataFetcher
         )
         
     def calculate_all(
@@ -87,7 +88,7 @@ class TechnicalIndicators:
             indicators['macd_histogram'] = macd_result['histogram']
             
             # =========================
-            # ADX + DI+ + DI- (اصلاح شده)
+            # ADX + DI+ + DI-
             # =========================
             adx_result = self.calculate_adx_full(df)
             indicators['adx'] = adx_result['adx']
@@ -187,8 +188,8 @@ class TechnicalIndicators:
             adx = ADXIndicator(df['high'], df['low'], df['close'], window=period)
             return {
                 'adx': adx.adx(),
-                'di_plus': adx.adx_pos(),   # ✅ اصلاح شد
-                'di_minus': adx.adx_neg()   # ✅ اصلاح شد
+                'di_plus': adx.adx_pos(),
+                'di_minus': adx.adx_neg()
             }
         except Exception as e:
             logger.error(f"Error calculating ADX: {e}")
@@ -321,8 +322,23 @@ class TechnicalIndicators:
             دیکشنری شامل support, resistance, dynamic_support, dynamic_resistance
         """
         try:
-            recent_data = df.tail(lookback)
             current_price = df['close'].iloc[-1]
+            
+            # =========================
+            # ❌ کندل فعلی را حذف می‌کنیم تا Breakout واقعی تشخیص داده شود
+            # =========================
+            if len(df) > lookback:
+                recent_data = df.iloc[-(lookback + 1):-1]
+            else:
+                recent_data = df.iloc[:-1]
+            
+            if len(recent_data) == 0:
+                return {
+                    'support': None,
+                    'resistance': None,
+                    'dynamic_support': None,
+                    'dynamic_resistance': None
+                }
             
             # =========================
             # حمایت و مقاومت ساده (بالاترین و پایین‌ترین)
@@ -331,21 +347,28 @@ class TechnicalIndicators:
             support = float(recent_data['low'].min())
             
             # =========================
-            # حمایت و مقاومت پویا با EMA50
+            # حمایت و مقاومت پویا با EMA (از Config خوانده می‌شود)
             # =========================
-            ema_50 = self.calculate_ema(df, 50)
+            ema_slow = self.calculate_ema(df, self.config.EMA_SLOW)
             dynamic_support = None
             dynamic_resistance = None
             
-            if ema_50 is not None and len(ema_50) > 0:
-                ema_value = float(ema_50.iloc[-1])
+            if ema_slow is not None and len(ema_slow) > 0:
+                ema_value = float(ema_slow.iloc[-1])
                 
-                # اگر قیمت بالای EMA50 باشد، EMA50 می‌تواند حمایت باشد
+                # اگر قیمت بالای EMA باشد، EMA می‌تواند حمایت باشد
                 if current_price > ema_value:
                     dynamic_support = ema_value
-                # اگر قیمت زیر EMA50 باشد، EMA50 می‌تواند مقاومت باشد
+                # اگر قیمت زیر EMA باشد، EMA می‌تواند مقاومت باشد
                 else:
                     dynamic_resistance = ema_value
+            
+            # =========================
+            # خوشه‌بندی سطوح نزدیک به هم (برای دقت بیشتر)
+            # =========================
+            support, resistance = self._cluster_sr_levels(
+                recent_data, support, resistance
+            )
             
             return {
                 'support': support,
@@ -362,3 +385,128 @@ class TechnicalIndicators:
                 'dynamic_support': None,
                 'dynamic_resistance': None
             }
+    
+    def _cluster_sr_levels(
+        self, 
+        df: pd.DataFrame, 
+        support: float, 
+        resistance: float,
+        tolerance_pct: float = 0.5
+    ) -> Tuple[float, float]:
+        """
+        خوشه‌بندی سطوح حمایت و مقاومت نزدیک به هم
+        
+        Args:
+            df: DataFrame داده‌ها
+            support: سطح حمایت اولیه
+            resistance: سطح مقاومت اولیه
+            tolerance_pct: درصد تحمل برای خوشه‌بندی (0.5%)
+            
+        Returns:
+            (support, resistance) خوشه‌بندی شده
+        """
+        try:
+            # =========================
+            # پیدا کردن سطوح نزدیک به حمایت
+            # =========================
+            support_levels = []
+            for i in range(len(df)):
+                low = df['low'].iloc[i]
+                if abs(low - support) / support * 100 < tolerance_pct:
+                    support_levels.append(low)
+            
+            if support_levels:
+                support = float(np.median(support_levels))
+            
+            # =========================
+            # پیدا کردن سطوح نزدیک به مقاومت
+            # =========================
+            resistance_levels = []
+            for i in range(len(df)):
+                high = df['high'].iloc[i]
+                if abs(high - resistance) / resistance * 100 < tolerance_pct:
+                    resistance_levels.append(high)
+            
+            if resistance_levels:
+                resistance = float(np.median(resistance_levels))
+            
+            return support, resistance
+            
+        except Exception as e:
+            logger.debug(f"SR clustering failed: {e}")
+            return support, resistance
+    
+    def calculate_heikin_ashi(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        محاسبه کندل‌های Heikin Ashi
+        
+        Args:
+            df: DataFrame با ستون‌های open, high, low, close
+            
+        Returns:
+            DataFrame با ستون‌های ha_open, ha_high, ha_low, ha_close
+        """
+        try:
+            ha_df = pd.DataFrame(index=df.index)
+            
+            ha_df['ha_close'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
+            
+            ha_df['ha_open'] = 0.0
+            ha_df.loc[ha_df.index[0], 'ha_open'] = (df['open'].iloc[0] + df['close'].iloc[0]) / 2
+            
+            for i in range(1, len(df)):
+                ha_df.loc[ha_df.index[i], 'ha_open'] = (
+                    ha_df['ha_open'].iloc[i-1] + ha_df['ha_close'].iloc[i-1]
+                ) / 2
+            
+            ha_df['ha_high'] = df[['high', 'open', 'close']].max(axis=1)
+            ha_df['ha_low'] = df[['low', 'open', 'close']].min(axis=1)
+            
+            return ha_df
+            
+        except Exception as e:
+            logger.error(f"Error calculating Heikin Ashi: {e}")
+            return pd.DataFrame()
+    
+    def get_ha_trend(self, df: pd.DataFrame) -> str:
+        """
+        تشخیص روند با استفاده از Heikin Ashi
+        
+        Returns:
+            'BULLISH', 'BEARISH', یا 'NEUTRAL'
+        """
+        try:
+            ha_df = self.calculate_heikin_ashi(df)
+            if ha_df.empty:
+                return 'NEUTRAL'
+            
+            last_ha_open = ha_df['ha_open'].iloc[-1]
+            last_ha_close = ha_df['ha_close'].iloc[-1]
+            prev_ha_open = ha_df['ha_open'].iloc[-2] if len(ha_df) > 1 else last_ha_open
+            prev_ha_close = ha_df['ha_close'].iloc[-2] if len(ha_df) > 1 else last_ha_close
+            
+            # =========================
+            # تشخیص روند
+            # =========================
+            is_bullish = (
+                last_ha_close > last_ha_open and
+                last_ha_open > prev_ha_open and
+                last_ha_close > prev_ha_close
+            )
+            
+            is_bearish = (
+                last_ha_close < last_ha_open and
+                last_ha_open < prev_ha_open and
+                last_ha_close < prev_ha_close
+            )
+            
+            if is_bullish:
+                return 'BULLISH'
+            elif is_bearish:
+                return 'BEARISH'
+            else:
+                return 'NEUTRAL'
+                
+        except Exception as e:
+            logger.error(f"Error calculating HA trend: {e}")
+            return 'NEUTRAL'
