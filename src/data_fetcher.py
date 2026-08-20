@@ -288,7 +288,7 @@ class DataQuality:
         if self.invalid_timestamp_count > 0:
             hard_failures.append('INVALID_TIMESTAMPS')
         
-        if len(self.final_closed_df) < self._get_min_required_candles():
+        if len(self.final_valid_candles) < self._get_min_required_candles():
             hard_failures.append('INSUFFICIENT_CANDLES')
         
         if hard_failures:
