@@ -35,7 +35,7 @@ class TechnicalIndicators:
             config.MACD_SLOW,          # 26 برای MACD
             config.ATR_PERIOD,         # 14 برای ATR
             config.ADX_PERIOD,         # 14 برای ADX
-            config.CANDLES_LIMIT       # 500 برای هماهنگی با DataFetcher
+            490                        # 490 برای هماهنگی با DataFetcher (که 499 برمی‌گردونه)
         )
         
     def calculate_all(
