@@ -217,7 +217,7 @@ class CryptoSignalBot:
                     limit=self.config.CANDLES_LIMIT
                 )
                 
-                if df is None or len(df) < self.config.CANDLES_LIMIT:
+                if df is None or len(df) < self.config.MIN_CANDLES_REQUIRED:
                     logger.warning(f"⚠️ Insufficient data for {symbol}")
                     continue
                 
