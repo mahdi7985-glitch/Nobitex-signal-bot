@@ -66,15 +66,48 @@ class MessageFormatter:
         except (TypeError, ValueError):
             return default
     
+    def _format_number_fa(self, num: float) -> str:
+        """
+        تبدیل عدد به فارسی با جداکننده هزارگان - بدون گرد کردن
+        نمایش دقیق همان عدد دریافتی از نوبیتکس
+        """
+        if num is None:
+            return '—'
+        
+        # تبدیل به رشته با دقت بالا و حذف صفرهای اضافی
+        num_str = f"{num:.10f}".rstrip('0').rstrip('.')
+        
+        # جدا کردن قسمت صحیح و اعشار
+        if '.' in num_str:
+            integer_part, decimal_part = num_str.split('.')
+        else:
+            integer_part, decimal_part = num_str, ''
+        
+        # جداکننده هزارگان برای قسمت صحیح
+        integer_parts = []
+        for i, char in enumerate(reversed(integer_part)):
+            if i > 0 and i % 3 == 0:
+                integer_parts.append(',')
+            integer_parts.append(char)
+        integer_formatted = ''.join(reversed(integer_parts))
+        
+        # تبدیل به فارسی
+        fa_digits = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴',
+                     '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'}
+        
+        integer_fa = ''.join(fa_digits.get(c, c) for c in integer_formatted)
+        
+        if decimal_part:
+            decimal_fa = ''.join(fa_digits.get(c, c) for c in decimal_part)
+            return f"{integer_fa}.{decimal_fa}"
+        return integer_fa
+    
     def _format_price(self, price: Union[float, int, str, None], unit: str = 'USDT') -> str:
         """
-        فرمت کردن قیمت با واحد
+        فرمت کردن قیمت با واحد - بدون گرد کردن
         """
         price_float = self._safe_float(price, 0)
-        try:
-            return f"{price_float:,.2f} {unit}"
-        except (TypeError, ValueError):
-            return f"{price_float} {unit}"
+        return f"{self._format_number_fa(price_float)} {unit}"
     
     def _format_score_for_sell(self, score: float) -> float:
         """
@@ -132,21 +165,19 @@ class MessageFormatter:
                 '%Y-%m-%dT%H:%M:%S',
                 '%Y-%m-%dT%H:%M:%S.%f',
                 '%Y-%m-%dT%H:%M:%S.%fZ',
-                '%Y-%m-%dT%H:%M:%S%z',  # با timezone
-                '%Y-%m-%dT%H:%M:%S.%f%z',  # با میکروثانیه و timezone
+                '%Y-%m-%dT%H:%M:%S%z',
+                '%Y-%m-%dT%H:%M:%S.%f%z',
             ]
             
             for fmt in formats:
                 try:
                     dt = datetime.strptime(timestamp, fmt)
-                    # اگر timezone نداشت، UTC فرض کن
                     if dt.tzinfo is None:
                         dt = dt.replace(tzinfo=pytz.UTC)
                     return dt.astimezone(self.timezone)
                 except ValueError:
                     continue
             
-            # اگر هیچ فرمتی مطابقت نداشت، خطا لاگ کن
             logger.warning(f"⚠️ Could not parse timestamp string: {timestamp}")
             return None
         
@@ -181,7 +212,7 @@ class MessageFormatter:
         lines = []
         
         # =========================
-        # هدر (با مدیریت مقادیر)
+        # هدر
         # =========================
         symbol = signal.get('symbol', 'Unknown')
         price = signal.get('price', 0)
@@ -232,8 +263,6 @@ class MessageFormatter:
         tp2 = signal.get('tp2')
         risk_reward = self._safe_float(signal.get('risk_reward', 0))
         
-        # توجه: اگر stop_loss یا tp1 برابر 0 باشند، بخش نمایش داده نمی‌شود
-        # که برای قیمت‌های واقعی مشکلی ایجاد نمی‌کند (چون قیمت صفر منطقی نیست)
         if stop_loss is not None and tp1 is not None:
             lines.append("🎯 <b>مدیریت ریسک:</b>")
             lines.append(f"🛑 حد ضرر: {self._format_price(stop_loss, price_unit)}")
@@ -263,7 +292,7 @@ class MessageFormatter:
             lines.append("")
         
         # =========================
-        # زمان (با مدیریت timezone)
+        # زمان
         # =========================
         timestamp = signal.get('timestamp')
         if timestamp:
@@ -290,7 +319,6 @@ class MessageFormatter:
         risk = ai_result.get('risk_assessment', 'متوسط')
         recommendation = ai_result.get('recommendation', '')
         
-        # ایمن‌سازی متن AI
         summary = self._safe_text(summary)
         recommendation = self._safe_text(recommendation)
         risk = self._safe_text(risk)
@@ -369,9 +397,6 @@ class MessageFormatter:
             "━━━━━━━━━━━━━━━━━━━━",
         ]
         
-        # =========================
-        # آمار کلی
-        # =========================
         total = len(signals)
         buy_signals = [s for s in signals if s.get('signal') == 'BUY']
         sell_signals = [s for s in signals if s.get('signal') == 'SELL']
@@ -383,9 +408,6 @@ class MessageFormatter:
         lines.append(f"📊 کل: {total}")
         lines.append("")
         
-        # =========================
-        # وضعیت بازار (پشتیبانی از فارسی و انگلیسی)
-        # =========================
         if market_regime:
             regime_emoji = {
                 'bullish': '🐂',
@@ -408,17 +430,12 @@ class MessageFormatter:
             lines.append(f"📈 وضعیت بازار: {regime_emoji} {regime_display}")
             lines.append("")
         
-        # =========================
-        # بهترین فرصت‌ها
-        # =========================
-        # خرید: امتیاز بالاتر = خرید قوی‌تر
         buy_signals_sorted = sorted(
             buy_signals,
             key=lambda x: self._safe_float(x.get('score', 0)),
             reverse=True
         )
         
-        # فروش: امتیاز پایین‌تر = فروش قوی‌تر
         sell_signals_sorted = sorted(
             sell_signals,
             key=lambda x: self._format_score_for_sell(x.get('score', 50)),
@@ -439,9 +456,6 @@ class MessageFormatter:
                 lines.append(f"• {s.get('symbol')} — {sell_power:.0f}% قدرت فروش")
             lines.append("")
         
-        # =========================
-        # خلاصه AI
-        # =========================
         if ai_summary:
             lines.append("━━━━━━━━━━━━━━━━━━━━")
             lines.append("🤖 <b>خلاصه AI</b>")
@@ -449,9 +463,6 @@ class MessageFormatter:
             lines.append(self._safe_text(ai_summary))
             lines.append("")
         
-        # =========================
-        # زمان
-        # =========================
         lines.append(f"⏰ {self._get_current_time()}")
         
         return "\n".join(lines)
