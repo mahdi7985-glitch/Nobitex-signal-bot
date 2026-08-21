@@ -7,7 +7,7 @@ import logging
 import time
 from typing import Optional, Dict, Any
 
-from execution_manager import ExecutionManager
+from src.execution_manager import ExecutionManager  # <-- اصلاح شده
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -44,19 +44,12 @@ class PaperTrader:
         return self.manager.get_balance()
     
     def run_continuous(self, check_interval: int = 60):
-        """
-        اجرای مداوم با بررسی خودکار
-        
-        Args:
-            check_interval: فاصله زمانی بین بررسی‌ها (ثانیه)
-        """
+        """اجرای مداوم با بررسی خودکار"""
         self.is_running = True
         logger.info(f"🚀 Starting Paper Trader (check every {check_interval}s)")
         
         while self.is_running:
             try:
-                # اینجا باید قیمت‌ها رو از DataFetcher بگیریم
-                # فعلاً فقط وضعیت رو نمایش می‌دهیم
                 status = self.get_status()
                 
                 if status.get('open_positions_count', 0) > 0:
