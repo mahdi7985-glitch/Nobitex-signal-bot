@@ -17,6 +17,7 @@ from src.ai_analyzer import AIAnalyzer
 from src.bale_bot import BaleBot
 from src.formatter import MessageFormatter
 from src.performance_tracker import PerformanceTracker
+from paper_trader import PaperTrader  # <-- اضافه شده
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,12 @@ class CryptoSignalBot:
         self.bale_bot = BaleBot(config)
         self.formatter = MessageFormatter(config)
         self.performance_tracker = PerformanceTracker(config)
+        
+        # =========================
+        # راه‌اندازی Paper Trader (اضافه شده)
+        # =========================
+        self.paper_trader = PaperTrader(config)
+        logger.info("✅ Paper Trader initialized with 530 USDT")
         
         # =========================
         # وضعیت ربات
@@ -98,6 +105,17 @@ class CryptoSignalBot:
                 logger.error("❌ No market data available")
                 return False
             
+            # ================================================
+            # به‌روزرسانی قیمت‌ها در Paper Trader (اضافه شده)
+            # ================================================
+            current_prices = {}
+            for symbol, data in market_data.items():
+                if data and data.get('price'):
+                    current_prices[symbol] = data['price']
+            
+            if current_prices:
+                self.paper_trader.update_prices(current_prices)
+            
             news_data = None
             news_summary = None
             news_sentiment = None
@@ -150,6 +168,13 @@ class CryptoSignalBot:
             
             top_signals = self.signal_engine.get_top_opportunities(all_results, limit=5)
             
+            # ================================================
+            # پردازش سیگنال‌ها توسط Paper Trader (اضافه شده)
+            # ================================================
+            for signal in top_signals:
+                if signal.get('signal') in ['BUY', 'SELL']:
+                    self.paper_trader.process_signal(signal)
+            
             signals_to_send = []
             for signal in top_signals:
                 if self._should_send_signal(signal):
@@ -195,6 +220,17 @@ class CryptoSignalBot:
             
             logger.info(f"✅ Scan completed. {len(all_results)} signals generated, {len(signals_to_send)} sent.")
             logger.info("=" * 50)
+            
+            # ================================================
+            # گزارش وضعیت Paper Trader (اضافه شده)
+            # ================================================
+            if signals_to_send:
+                status = self.paper_trader.get_status()
+                logger.info(
+                    f"💰 Paper Balance: {status['balance']:.2f} USDT "
+                    f"| Open: {status['open_positions_count']} "
+                    f"| P/L: {status['balance'] - 530:.2f} USDT"
+                )
             
             self.last_run_time = datetime.now()
             return True
@@ -385,6 +421,19 @@ class CryptoSignalBot:
             except KeyboardInterrupt:
                 logger.info("👋 Bot stopped by user")
                 self.running = False
+                
+                # ================================================
+                # گزارش نهایی Paper Trader (اضافه شده)
+                # ================================================
+                status = self.paper_trader.get_status()
+                logger.info("=" * 50)
+                logger.info("📊 FINAL PAPER TRADING REPORT")
+                logger.info(f"   Initial Balance: 530.00 USDT")
+                logger.info(f"   Final Balance:   {status['balance']:.2f} USDT")
+                logger.info(f"   Total P/L:       {status['balance'] - 530:.2f} USDT")
+                logger.info(f"   P/L Percent:     {((status['balance'] / 530) - 1) * 100:.2f}%")
+                logger.info(f"   Open Positions:  {status['open_positions_count']}")
+                logger.info("=" * 50)
                 break
             except Exception as e:
                 logger.error(f"❌ Critical error: {e}")
