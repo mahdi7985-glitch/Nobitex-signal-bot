@@ -6,8 +6,8 @@ Manages trading execution (Paper or Live)
 import logging
 from typing import Optional, Dict, Any
 
-from execution_interface import ExecutionInterface
-from paper_executor import PaperExecutor
+from src.execution_interface import ExecutionInterface  # <-- اصلاح شده
+from src.paper_executor import PaperExecutor  # <-- اصلاح شده
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -19,11 +19,6 @@ class ExecutionManager:
     """
     
     def __init__(self, config=Config, mode: str = 'paper'):
-        """
-        Args:
-            config: تنظیمات
-            mode: 'paper' یا 'live'
-        """
         self.config = config
         self.mode = mode
         self.executor: Optional[ExecutionInterface] = None
@@ -39,23 +34,12 @@ class ExecutionManager:
             )
             logger.info("✅ Paper Executor initialized (Balance: 530 USDT)")
         elif self.mode == 'live':
-            # برای آینده - وقتی صرافی متصل شد
             logger.warning("⚠️ Live Executor not implemented yet")
-            # from live_executor import LiveExecutor
-            # self.executor = LiveExecutor(config)
         else:
             raise ValueError(f"Invalid mode: {self.mode}")
     
     def process_signal(self, signal: Dict[str, Any]) -> bool:
-        """
-        پردازش سیگنال و اجرای معامله
-        
-        Args:
-            signal: سیگنال تولید شده توسط SignalEngine
-            
-        Returns:
-            True در صورت موفقیت
-        """
+        """پردازش سیگنال و اجرای معامله"""
         if not signal or not self.executor:
             return False
         
@@ -67,13 +51,12 @@ class ExecutionManager:
         price = signal.get('price', 0)
         stop_loss = signal.get('stop_loss_raw')
         take_profit = signal.get('tp1_raw')
-        size = 0.25  # ۲۵٪ سرمایه
+        size = 0.25
         
         if not all([symbol, price, stop_loss, take_profit]):
             logger.error(f"❌ Invalid signal for execution: {signal}")
             return False
         
-        # اجرا بر اساس نوع سیگنال
         if action == 'BUY':
             return self.executor.execute_buy(
                 symbol=symbol,
@@ -82,7 +65,7 @@ class ExecutionManager:
                 take_profit=take_profit,
                 size=size
             )
-        else:  # SELL
+        else:
             return self.executor.execute_sell(
                 symbol=symbol,
                 price=price,
@@ -92,16 +75,10 @@ class ExecutionManager:
             )
     
     def update_prices(self, prices: Dict[str, float]):
-        """
-        به‌روزرسانی قیمت‌ها و بررسی خودکار بسته‌شدن
-        
-        Args:
-            prices: دیکشنری {symbol: current_price}
-        """
+        """به‌روزرسانی قیمت‌ها و بررسی خودکار بسته‌شدن"""
         if not self.executor or self.mode != 'paper':
             return
         
-        # فقط برای Paper Executor
         if isinstance(self.executor, PaperExecutor):
             for symbol, price in prices.items():
                 self.executor.update_price(symbol, price)
@@ -119,9 +96,7 @@ class ExecutionManager:
         return self.executor.get_all_positions()
     
     def get_status(self) -> Dict[str, Any]:
-        """
-        دریافت وضعیت کامل
-        """
+        """دریافت وضعیت کامل"""
         if not self.executor:
             return {
                 'mode': self.mode,
@@ -132,7 +107,6 @@ class ExecutionManager:
         positions = self.executor.get_all_positions()
         open_positions = [s for s, p in positions.items() if p.get('status') == 'OPEN']
         
-        # دریافت عملکرد از PaperExecutor
         performance = {}
         if isinstance(self.executor, PaperExecutor):
             performance = self.executor.get_performance_summary()
@@ -146,12 +120,7 @@ class ExecutionManager:
         }
     
     def switch_mode(self, mode: str):
-        """
-        تغییر حالت (برای آینده)
-        
-        Args:
-            mode: 'paper' یا 'live'
-        """
+        """تغییر حالت (برای آینده)"""
         if mode == self.mode:
             return
         
