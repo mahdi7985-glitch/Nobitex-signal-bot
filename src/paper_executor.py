@@ -7,8 +7,8 @@ import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-from execution_interface import ExecutionInterface
-from performance_tracker import PerformanceTracker
+from src.execution_interface import ExecutionInterface
+from src.performance_tracker import PerformanceTracker
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -31,25 +31,15 @@ class PaperExecutor(ExecutionInterface):
     def execute_buy(self, symbol: str, price: float, stop_loss: float, take_profit: float, size: float = 0.25) -> bool:
         """
         اجرای خرید آزمایشی
-        
-        Args:
-            symbol: نماد
-            price: قیمت لحظه‌ای
-            stop_loss: حد ضرر
-            take_profit: هدف سود
-            size: درصد سرمایه (پیش‌فرض ۲۵٪)
         """
-        # بررسی موجودی
         if self.current_balance <= 0:
             logger.error(f"❌ Insufficient balance for {symbol}")
             return False
         
-        # اعمال Slippage
         entry_price = price * (1 + self.slippage_factor)
         position_value = self.current_balance * size
         quantity = position_value / entry_price
         
-        # ثبت موقعیت
         self.positions[symbol] = {
             'type': 'BUY',
             'entry_price': price,
@@ -63,10 +53,8 @@ class PaperExecutor(ExecutionInterface):
             'status': 'OPEN'
         }
         
-        # کاهش موجودی
         self.current_balance -= position_value
         
-        # ثبت در PerformanceTracker
         self.tracker.open_paper_trade(
             symbol=symbol,
             signal_type='BUY',
@@ -86,25 +74,15 @@ class PaperExecutor(ExecutionInterface):
     def execute_sell(self, symbol: str, price: float, stop_loss: float, take_profit: float, size: float = 0.25) -> bool:
         """
         اجرای فروش آزمایشی
-        
-        Args:
-            symbol: نماد
-            price: قیمت لحظه‌ای
-            stop_loss: حد ضرر
-            take_profit: هدف سود
-            size: درصد سرمایه (پیش‌فرض ۲۵٪)
         """
-        # بررسی موجودی
         if self.current_balance <= 0:
             logger.error(f"❌ Insufficient balance for {symbol}")
             return False
         
-        # اعمال Slippage
         entry_price = price * (1 - self.slippage_factor)
         position_value = self.current_balance * size
         quantity = position_value / entry_price
         
-        # ثبت موقعیت
         self.positions[symbol] = {
             'type': 'SELL',
             'entry_price': price,
@@ -118,10 +96,8 @@ class PaperExecutor(ExecutionInterface):
             'status': 'OPEN'
         }
         
-        # کاهش موجودی
         self.current_balance -= position_value
         
-        # ثبت در PerformanceTracker
         self.tracker.open_paper_trade(
             symbol=symbol,
             signal_type='SELL',
@@ -139,12 +115,7 @@ class PaperExecutor(ExecutionInterface):
         return True
     
     def close_position(self, symbol: str) -> bool:
-        """
-        بستن یک موقعیت باز
-        
-        Args:
-            symbol: نماد
-        """
+        """بستن یک موقعیت باز"""
         if symbol not in self.positions:
             logger.warning(f"⚠️ No position found for {symbol}")
             return False
@@ -154,20 +125,14 @@ class PaperExecutor(ExecutionInterface):
             logger.warning(f"⚠️ Position {symbol} is already closed")
             return False
         
-        # دریافت قیمت لحظه‌ای (از دیتابیس یا API)
-        # اینجا باید از DataFetcher قیمت بگیریم
-        # فعلاً فرض می‌کنیم از بیرون قیمت می‌اد
         return True
     
     def get_balance(self) -> float:
         """دریافت موجودی فعلی"""
         total_value = self.current_balance
         
-        # محاسبه ارزش موقعیت‌های باز
         for symbol, position in self.positions.items():
             if position['status'] == 'OPEN':
-                # ارزش موقعیت رو به موجودی اضافه می‌کنیم
-                # (قیمت فعلی رو باید از API بگیریم)
                 total_value += position['position_value']
         
         return total_value
@@ -183,10 +148,6 @@ class PaperExecutor(ExecutionInterface):
     def update_price(self, symbol: str, current_price: float):
         """
         به‌روزرسانی قیمت و بررسی خودکار بسته‌شدن
-        
-        Args:
-            symbol: نماد
-            current_price: قیمت لحظه‌ای
         """
         if symbol not in self.positions:
             return
@@ -221,21 +182,17 @@ class PaperExecutor(ExecutionInterface):
             self._close_position(symbol, current_price, exit_reason)
     
     def _close_position(self, symbol: str, exit_price: float, exit_reason: str):
-        """
-        بستن داخلی موقعیت
-        """
+        """بستن داخلی موقعیت"""
         position = self.positions[symbol]
         signal_type = position['type']
         entry_price = position['entry_price_slippage']
         position_value = position['position_value']
         
-        # اعمال Slippage روی قیمت خروج
         if signal_type == 'BUY':
             exit_with_slippage = exit_price * (1 - self.slippage_factor)
         else:  # SELL
             exit_with_slippage = exit_price * (1 + self.slippage_factor)
         
-        # محاسبه سود/ضرر
         if signal_type == 'BUY':
             price_change = (exit_with_slippage - entry_price) / entry_price
         else:  # SELL
@@ -244,10 +201,8 @@ class PaperExecutor(ExecutionInterface):
         profit_loss = position_value * price_change
         profit_loss_percent = price_change * 100
         
-        # به‌روزرسانی موجودی
         self.current_balance += position_value + profit_loss
         
-        # بستن موقعیت
         position['status'] = 'CLOSED'
         position['exit_price'] = exit_price
         position['exit_price_slippage'] = exit_with_slippage
@@ -256,7 +211,6 @@ class PaperExecutor(ExecutionInterface):
         position['profit_loss'] = profit_loss
         position['profit_loss_percent'] = profit_loss_percent
         
-        # ثبت در PerformanceTracker
         self.tracker.close_paper_trade(
             symbol=symbol,
             exit_price=exit_price,
@@ -270,7 +224,5 @@ class PaperExecutor(ExecutionInterface):
         )
     
     def get_performance_summary(self) -> Dict[str, Any]:
-        """
-        دریافت خلاصه عملکرد
-        """
+        """دریافت خلاصه عملکرد"""
         return self.tracker.get_performance_summary()
