@@ -17,7 +17,7 @@ from src.ai_analyzer import AIAnalyzer
 from src.bale_bot import BaleBot
 from src.formatter import MessageFormatter
 from src.performance_tracker import PerformanceTracker
-from paper_trader import PaperTrader  # <-- اضافه شده
+from paper_trader import paperTrader  # <-- اضافه شده
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +42,10 @@ class CryptoSignalBot:
         self.performance_tracker = PerformanceTracker(config)
         
         # =========================
-        # راه‌اندازی Paper Trader (اضافه شده)
+        # راه‌اندازی paper Trader (اضافه شده)
         # =========================
-        self.paper_trader = PaperTrader(config)
-        logger.info("✅ Paper Trader initialized with 530 USDT")
+        self.paper_trader = paperTrader(config)
+        logger.info("✅ paper Trader initialized with 530 USDT")
         
         # =========================
         # وضعیت ربات
@@ -106,7 +106,7 @@ class CryptoSignalBot:
                 return False
             
             # ================================================
-            # به‌روزرسانی قیمت‌ها در Paper Trader (اضافه شده)
+            # به‌روزرسانی قیمت‌ها در paper Trader (اضافه شده)
             # ================================================
             current_prices = {}
             for symbol, data in market_data.items():
@@ -169,7 +169,7 @@ class CryptoSignalBot:
             top_signals = self.signal_engine.get_top_opportunities(all_results, limit=5)
             
             # ================================================
-            # پردازش سیگنال‌ها توسط Paper Trader (اضافه شده)
+            # پردازش سیگنال‌ها توسط paper Trader (اضافه شده)
             # ================================================
             for signal in top_signals:
                 if signal.get('signal') in ['BUY', 'SELL']:
@@ -222,12 +222,12 @@ class CryptoSignalBot:
             logger.info("=" * 50)
             
             # ================================================
-            # گزارش وضعیت Paper Trader (اضافه شده)
+            # گزارش وضعیت paper Trader (اضافه شده)
             # ================================================
             if signals_to_send:
                 status = self.paper_trader.get_status()
                 logger.info(
-                    f"💰 Paper Balance: {status['balance']:.2f} USDT "
+                    f"💰 paper Balance: {status['balance']:.2f} USDT "
                     f"| Open: {status['open_positions_count']} "
                     f"| P/L: {status['balance'] - 530:.2f} USDT"
                 )
@@ -423,11 +423,11 @@ class CryptoSignalBot:
                 self.running = False
                 
                 # ================================================
-                # گزارش نهایی Paper Trader (اضافه شده)
+                # گزارش نهایی paper Trader (اضافه شده)
                 # ================================================
                 status = self.paper_trader.get_status()
                 logger.info("=" * 50)
-                logger.info("📊 FINAL PAPER TRADING REPORT")
+                logger.info("📊 FINAL paper TRADING REPORT")
                 logger.info(f"   Initial Balance: 530.00 USDT")
                 logger.info(f"   Final Balance:   {status['balance']:.2f} USDT")
                 logger.info(f"   Total P/L:       {status['balance'] - 530:.2f} USDT")
