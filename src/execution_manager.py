@@ -6,8 +6,8 @@ Manages trading execution (Paper or Live)
 import logging
 from typing import Optional, Dict, Any
 
-from src.execution_interface import ExecutionInterface  # <-- اصلاح شده
-from src.paper_executor import PaperExecutor  # <-- اصلاح شده
+from src.execution_interface import ExecutionInterface
+from src.paper_executor import PaperExecutor
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,15 @@ class ExecutionManager:
             raise ValueError(f"Invalid mode: {self.mode}")
     
     def process_signal(self, signal: Dict[str, Any]) -> bool:
-        """پردازش سیگنال و اجرای معامله"""
+        """
+        پردازش سیگنال و اجرای معامله
+        
+        Args:
+            signal: سیگنال کامل از SignalEngine
+        
+        Returns:
+            True در صورت موفقیت
+        """
         if not signal or not self.executor:
             return False
         
@@ -57,21 +65,26 @@ class ExecutionManager:
             logger.error(f"❌ Invalid signal for execution: {signal}")
             return False
         
+        # ================================================
+        # ارسال signal_data به executor (اضافه شده)
+        # ================================================
         if action == 'BUY':
             return self.executor.execute_buy(
                 symbol=symbol,
                 price=price,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
-                size=size
+                size=size,
+                signal_data=signal  # <-- اضافه شده
             )
-        else:
+        else:  # SELL
             return self.executor.execute_sell(
                 symbol=symbol,
                 price=price,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
-                size=size
+                size=size,
+                signal_data=signal  # <-- اضافه شده
             )
     
     def update_prices(self, prices: Dict[str, float]):
