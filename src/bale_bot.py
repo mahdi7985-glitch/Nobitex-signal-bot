@@ -507,3 +507,445 @@ class BaleBot:
         """
         message = f"❌ <b>خطا</b>\n\n{error_message}"
         return self.send_message(message)
+
+    # ============================================================
+    # پیام‌های باز و بسته شدن معامله (اضافه شده)
+    # ============================================================
+
+    def _format_indicator_analysis(self, indicator_scores: Dict[str, float], outcome: str) -> str:
+        """
+        فرمت کردن تحلیل اندیکاتورها با پیشنهاد بهبود
+        
+        Args:
+            indicator_scores: دیکشنری امتیاز اندیکاتورها {'trend': 20, 'momentum': 18, ...}
+            outcome: 'WIN' یا 'LOSS'
+        
+        Returns:
+            متن تحلیل فرمت شده
+        """
+        if not indicator_scores:
+            return "📊 اطلاعات اندیکاتورها در دسترس نیست."
+        
+        lines = []
+        lines.append("<b>📊 تحلیل اندیکاتورها:</b>")
+        lines.append("")
+        
+        # تعیین آستانه‌های بهینه برای هر اندیکاتور
+        optimal_thresholds = {
+            'trend': {'min': 15, 'optimal': 20, 'name': 'روند (Trend)'},
+            'momentum': {'min': 12, 'optimal': 18, 'name': 'مومنتوم (Momentum)'},
+            'volume': {'min': 8, 'optimal': 15, 'name': 'حجم (Volume)'},
+            'volatility': {'min': -5, 'optimal': 5, 'name': 'نوسان (Volatility)'},
+            'breakout': {'min': 5, 'optimal': 10, 'name': 'شکست (Breakout)'},
+            'support_resistance': {'min': 5, 'optimal': 10, 'name': 'حمایت/مقاومت (S/R)'},
+            'adx': {'min': 2, 'optimal': 8, 'name': 'قدرت روند (ADX)'}
+        }
+        
+        emoji_map = {
+            'trend': '📈',
+            'momentum': '⚡',
+            'volume': '📊',
+            'volatility': '📉',
+            'breakout': '🚀',
+            'support_resistance': '🛡️',
+            'adx': '📏'
+        }
+        
+        for key, value in indicator_scores.items():
+            if key not in optimal_thresholds:
+                continue
+            
+            info = optimal_thresholds[key]
+            emoji = emoji_map.get(key, '🔹')
+            status = "✅" if value >= info['min'] else "⚠️"
+            
+            # تعیین وضعیت
+            if outcome == 'WIN':
+                if value >= info['optimal']:
+                    status_text = "عالی ✅"
+                elif value >= info['min']:
+                    status_text = "خوب ✔️"
+                else:
+                    status_text = "ضعیف ⚠️"
+            else:  # LOSS
+                if value < info['min']:
+                    status_text = "ضعیف ❌"
+                elif value < info['optimal']:
+                    status_text = "متوسط ⚠️"
+                else:
+                    status_text = "خوب ولی کافی نبود 🤔"
+            
+            # پیشنهاد بهبود
+            if value < info['min']:
+                suggestion = f"➜ اگر {info['optimal']} بود، نتیجه بهتری داشت"
+            elif value < info['optimal']:
+                suggestion = f"➜ اگر به {info['optimal']} می‌رسید، وضعیت بهینه‌تر می‌شد"
+            else:
+                suggestion = "➜ در وضعیت مطلوب ✅"
+            
+            lines.append(
+                f"{emoji} <b>{info['name']}:</b> {value:+.1f} ({status_text})"
+            )
+            lines.append(f"   {suggestion}")
+            lines.append("")
+        
+        return "\n".join(lines)
+
+    def send_trade_open(
+        self,
+        symbol: str,
+        signal_type: str,  # 'BUY' یا 'SELL'
+        entry_price: float,
+        stop_loss: float,
+        take_profit_1: float,
+        take_profit_2: Optional[float],
+        risk_reward: float,
+        position_size: float,
+        remaining_balance: float,
+        score: float,
+        timeframe: str = "15m",
+        confidence: float = 0.0,
+        indicator_scores: Optional[Dict[str, float]] = None
+    ) -> bool:
+        """
+        ارسال پیام باز شدن معامله (خرید/فروش)
+        
+        Args:
+            symbol: نماد
+            signal_type: 'BUY' یا 'SELL'
+            entry_price: قیمت ورود
+            stop_loss: حد ضرر
+            take_profit_1: هدف اول
+            take_profit_2: هدف دوم (اختیاری)
+            risk_reward: نسبت ریسک به بازده
+            position_size: درصد سرمایه (مثلاً 0.25)
+            remaining_balance: موجودی باقی‌مانده
+            score: امتیاز سیگنال
+            timeframe: تایم‌فریم
+            confidence: درصد اطمینان
+            indicator_scores: دیکشنری امتیاز اندیکاتورها
+        """
+        persian_date = self._get_persian_datetime()
+        
+        # نام و ایموجی
+        signal_fa = self.SIGNAL_MAP.get(signal_type, {}).get('fa', 'نامشخص')
+        signal_emoji = self.SIGNAL_MAP.get(signal_type, {}).get('emoji', '⚪')
+        action_text = "باز شد" if signal_type == 'BUY' else "باز شد"
+        
+        position_percent = position_size * 100
+        position_value = 530 * position_size  # فرض سرمایه اولیه 530
+        
+        lines = [
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"{signal_emoji} <b>معامله {action_text}!</b> ({signal_fa})",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "",
+            f"📊 <b>{symbol}</b> (USDT)",
+            f"⏰ <b>زمان:</b> {persian_date}",
+            f"📈 <b>تایم‌فریم:</b> {timeframe}",
+            "",
+            f"💰 <b>قیمت ورود:</b> {self._format_number_fa(entry_price)} USDT",
+            f"🛑 <b>حد ضرر:</b> {self._format_number_fa(stop_loss)} USDT",
+            f"🎯 <b>هدف ۱:</b> {self._format_number_fa(take_profit_1)} USDT",
+        ]
+        
+        if take_profit_2:
+            lines.append(f"🎯 <b>هدف ۲:</b> {self._format_number_fa(take_profit_2)} USDT")
+        
+        lines.append(f"⚖️ <b>نسبت ریسک/بازده:</b> {risk_reward:.2f}")
+        lines.append("")
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        lines.append("<b>💰 جزئیات سرمایه:</b>")
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"💵 <b>سرمایه‌ی معامله:</b> {position_value:.2f} USDT ({position_percent:.0f}%)")
+        lines.append(f"💰 <b>موجودی باقی‌مانده:</b> {self._format_number_fa(remaining_balance)} USDT")
+        lines.append("")
+        
+        # نمایش اندیکاتورهای کلیدی
+        if indicator_scores:
+            lines.append("━━━━━━━━━━━━━━━━━━━━")
+            lines.append("<b>📊 اندیکاتورهای کلیدی:</b>")
+            lines.append("━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"📈 <b>امتیاز کلی:</b> {score:.1f}/۱۰۰")
+            lines.append("")
+            
+            # نمایش ۳-۴ اندیکاتور برتر
+            sorted_scores = sorted(indicator_scores.items(), key=lambda x: x[1], reverse=True)[:4]
+            emoji_map = {
+                'trend': '📈',
+                'momentum': '⚡',
+                'volume': '📊',
+                'breakout': '🚀',
+                'support_resistance': '🛡️',
+                'adx': '📏',
+                'volatility': '📉'
+            }
+            name_map = {
+                'trend': 'روند',
+                'momentum': 'مومنتوم',
+                'volume': 'حجم',
+                'breakout': 'شکست',
+                'support_resistance': 'حمایت/مقاومت',
+                'adx': 'قدرت روند',
+                'volatility': 'نوسان'
+            }
+            
+            for key, value in sorted_scores:
+                emoji = emoji_map.get(key, '🔹')
+                name = name_map.get(key, key)
+                lines.append(f"{emoji} <b>{name}:</b> {value:+.1f}")
+            
+            lines.append("")
+        
+        lines.append("---")
+        lines.append(f"<i>🕐 {persian_date}</i>")
+        
+        return self.send_message("\n".join(lines))
+
+    def send_trade_close(
+        self,
+        symbol: str,
+        signal_type: str,  # 'BUY' یا 'SELL'
+        entry_price: float,
+        exit_price: float,
+        entry_time: str,
+        exit_time: str,
+        hold_time: str,
+        timeframe: str,
+        gross_profit: float,
+        net_profit: float,
+        net_profit_percent: float,
+        total_fee: float,
+        buy_fee: float,
+        sell_fee: float,
+        exit_reason: str,
+        current_balance: float,
+        total_trades: int,
+        win_rate: float,
+        score: float,
+        indicator_scores: Dict[str, float],
+        outcome: str  # 'WIN' یا 'LOSS'
+    ) -> bool:
+        """
+        ارسال پیام بسته شدن معامله با تحلیل اندیکاتورها
+        
+        Args:
+            symbol: نماد
+            signal_type: 'BUY' یا 'SELL'
+            entry_price: قیمت ورود
+            exit_price: قیمت خروج
+            entry_time: زمان ورود
+            exit_time: زمان خروج
+            hold_time: مدت باز بودن
+            timeframe: تایم‌فریم
+            gross_profit: سود ناخالص
+            net_profit: سود خالص
+            net_profit_percent: سود درصدی خالص
+            total_fee: کارمزد کل
+            buy_fee: کارمزد خرید
+            sell_fee: کارمزد فروش
+            exit_reason: دلیل خروج ('stop_loss', 'take_profit_1', 'take_profit_2')
+            current_balance: موجودی فعلی
+            total_trades: تعداد کل معاملات بسته
+            win_rate: نرخ موفقیت
+            score: امتیاز سیگنال
+            indicator_scores: دیکشنری امتیاز اندیکاتورها
+            outcome: 'WIN' یا 'LOSS'
+        """
+        persian_date = self._get_persian_datetime()
+        
+        # ایموجی و نتیجه
+        is_win = net_profit > 0
+        emoji = "✅" if is_win else "❌"
+        result_text = "سود" if is_win else "ضرر"
+        sign = "+" if is_win else ""
+        
+        # دلیل خروج به فارسی
+        exit_reason_map = {
+            'stop_loss': 'حد ضرر',
+            'take_profit_1': 'هدف ۱',
+            'take_profit_2': 'هدف ۲',
+            'manual': 'دستی'
+        }
+        exit_reason_fa = exit_reason_map.get(exit_reason, exit_reason)
+        
+        signal_fa = self.SIGNAL_MAP.get(signal_type, {}).get('fa', 'نامشخص')
+        signal_emoji = self.SIGNAL_MAP.get(signal_type, {}).get('emoji', '⚪')
+        
+        # تغییر قیمت
+        if signal_type == 'BUY':
+            price_change = ((exit_price - entry_price) / entry_price) * 100
+        else:  # SELL
+            price_change = ((entry_price - exit_price) / entry_price) * 100
+        
+        lines = [
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"{emoji} <b>معامله بسته شد!</b> ({signal_fa})",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "",
+            f"📊 <b>{symbol}</b> (USDT)",
+            f"⏰ <b>زمان ورود:</b> {entry_time}",
+            f"⏰ <b>زمان خروج:</b> {exit_time}",
+            f"⏱️ <b>مدت باز بودن:</b> {hold_time}",
+            f"📈 <b>تایم‌فریم:</b> {timeframe}",
+            "",
+            f"💰 <b>قیمت ورود:</b> {self._format_number_fa(entry_price)} USDT",
+            f"💰 <b>قیمت خروج:</b> {self._format_number_fa(exit_price)} USDT",
+            f"📈 <b>تغییر قیمت:</b> {sign}{price_change:.2f}%",
+            "",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "<b>💰 جزئیات مالی:</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"💵 <b>سرمایه‌ی معامله:</b> ۱۳۲.۵۰ USDT",
+            f"💵 <b>سرمایه‌ی نهایی:</b> {self._format_number_fa(abs(net_profit))} USDT",
+            "",
+            f"📊 <b>{result_text} خالص:</b> {sign}{net_profit:.2f} USDT {emoji}",
+            f"📊 <b>{result_text} درصدی:</b> {sign}{net_profit_percent:.2f}%",
+            "",
+            f"💳 <b>کارمزد خرید:</b> -{self._format_number_fa(buy_fee)} USDT",
+            f"💳 <b>کارمزد فروش:</b> -{self._format_number_fa(sell_fee)} USDT",
+            f"💳 <b>کارمزد کل:</b> -{self._format_number_fa(total_fee)} USDT",
+            "",
+            f"💰 <b>{result_text} ناخالص:</b> {sign}{(abs(net_profit) + total_fee):.2f} USDT",
+            f"📉 <b>دلیل خروج:</b> {exit_reason_fa}",
+            "",
+        ]
+        
+        # تحلیل اندیکاتورها
+        if indicator_scores:
+            lines.append("━━━━━━━━━━━━━━━━━━━━")
+            lines.append(self._format_indicator_analysis(indicator_scores, outcome))
+            lines.append("")
+        
+        # وضعیت کلی
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        lines.append("<b>📊 وضعیت کلی:</b>")
+        lines.append("━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"💰 <b>موجودی کل:</b> {self._format_number_fa(current_balance)} USDT")
+        lines.append(f"📈 <b>تغییر کل:</b> {sign}{(current_balance - 530):.2f} USDT ({((current_balance / 530) - 1) * 100:.2f}%)")
+        lines.append(f"🔄 <b>معاملات بسته:</b> {total_trades}")
+        lines.append(f"📊 <b>نرخ موفقیت:</b> {win_rate:.1f}%")
+        lines.append("")
+        lines.append("---")
+        lines.append(f"<i>🕐 {persian_date}</i>")
+        
+        return self.send_message("\n".join(lines))
+
+    def send_performance_report(
+        self,
+        report_type: str,  # 'daily' یا 'weekly'
+        start_date: str,
+        end_date: str,
+        initial_balance: float,
+        current_balance: float,
+        total_trades: int,
+        wins: int,
+        losses: int,
+        win_rate: float,
+        total_profit: float,
+        total_loss: float,
+        profit_factor: float,
+        best_trade: Dict[str, Any],
+        worst_trade: Dict[str, Any],
+        indicator_performance: Dict[str, Dict[str, Any]]
+    ) -> bool:
+        """
+        ارسال گزارش عملکرد روزانه/هفتگی
+        
+        Args:
+            report_type: 'daily' یا 'weekly'
+            start_date: تاریخ شروع
+            end_date: تاریخ پایان
+            initial_balance: سرمایه اولیه
+            current_balance: سرمایه فعلی
+            total_trades: کل معاملات
+            wins: تعداد برد
+            losses: تعداد باخت
+            win_rate: نرخ موفقیت
+            total_profit: کل سود
+            total_loss: کل ضرر
+            profit_factor: ضریب سود
+            best_trade: بهترین معامله
+            worst_trade: بدترین معامله
+            indicator_performance: عملکرد اندیکاتورها
+        """
+        persian_date = self._get_persian_datetime()
+        
+        report_name = "گزارش روزانه" if report_type == 'daily' else "گزارش هفتگی"
+        total_change = current_balance - initial_balance
+        sign = "+" if total_change > 0 else ""
+        
+        lines = [
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"<b>📊 {report_name}</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"📅 <b>دوره:</b> {start_date} تا {end_date}",
+            "",
+            f"💰 <b>سرمایه اولیه:</b> {self._format_number_fa(initial_balance)} USDT",
+            f"💰 <b>سرمایه فعلی:</b> {self._format_number_fa(current_balance)} USDT",
+            f"📈 <b>تغییر کل:</b> {sign}{total_change:.2f} USDT ({((current_balance / initial_balance) - 1) * 100:.2f}%)",
+            "",
+            "━━━━━━━━━━━━━━━━━━━━",
+            "<b>📊 آمار معاملات:</b>",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"🔄 <b>کل معاملات:</b> {total_trades}",
+            f"✅ <b>موفق:</b> {wins} ({win_rate:.1f}%)",
+            f"❌ <b>ناموفق:</b> {losses} ({100 - win_rate:.1f}%)",
+            f"💰 <b>کل سود:</b> {total_profit:.2f} USDT",
+            f"💰 <b>کل ضرر:</b> {total_loss:.2f} USDT",
+            f"📊 <b>ضریب سود:</b> {profit_factor:.2f}",
+            "",
+        ]
+        
+        # عملکرد اندیکاتورها
+        if indicator_performance:
+            lines.append("━━━━━━━━━━━━━━━━━━━━")
+            lines.append("<b>📊 عملکرد اندیکاتورها:</b>")
+            lines.append("━━━━━━━━━━━━━━━━━━━━")
+            
+            sorted_indicators = sorted(
+                indicator_performance.items(),
+                key=lambda x: x[1].get('win_rate', 0),
+                reverse=True
+            )
+            
+            medals = ['🥇', '🥈', '🥉']
+            for i, (indicator, data) in enumerate(sorted_indicators[:5]):
+                medal = medals[i] if i < 3 else '🔹'
+                win_rate_ind = data.get('win_rate', 0)
+                lines.append(f"{medal} <b>{indicator}:</b> {win_rate_ind:.1f}% موفقیت")
+            
+            # پیشنهاد بهبود
+            if sorted_indicators:
+                best = sorted_indicators[0]
+                worst = sorted_indicators[-1]
+                lines.append("")
+                lines.append(f"💡 <b>نکته:</b> اندیکاتور <b>{best[0]}</b> بهترین عملکرد رو داشته.")
+                if worst[1].get('win_rate', 0) < 50:
+                    lines.append(f"⚠️ اندیکاتور <b>{worst[0]}</b> عملکرد ضعیفی داشته، بهتره بررسی بشه.")
+            lines.append("")
+        
+        # بهترین و بدترین معامله
+        if best_trade:
+            lines.append("━━━━━━━━━━━━━━━━━━━━")
+            lines.append("🏆 <b>بهترین معامله:</b>")
+            lines.append("━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"📊 {best_trade.get('symbol')} | {best_trade.get('signal_type')}")
+            lines.append(f"💰 سود: +{best_trade.get('profit', 0):.2f} USDT")
+            lines.append(f"📅 {best_trade.get('date', '')}")
+            lines.append("")
+        
+        if worst_trade:
+            lines.append("━━━━━━━━━━━━━━━━━━━━")
+            lines.append("📉 <b>بدترین معامله:</b>")
+            lines.append("━━━━━━━━━━━━━━━━━━━━")
+            lines.append(f"📊 {worst_trade.get('symbol')} | {worst_trade.get('signal_type')}")
+            lines.append(f"💰 ضرر: {worst_trade.get('profit', 0):.2f} USDT")
+            lines.append(f"📅 {worst_trade.get('date', '')}")
+            lines.append("")
+        
+        lines.append("---")
+        lines.append(f"<i>🕐 {persian_date}</i>")
+        
+        return self.send_message("\n".join(lines))
+        
