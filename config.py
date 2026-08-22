@@ -280,8 +280,8 @@ class Config:
         "support_resistance": 10,
     }
 
-    MIN_SIGNAL_SCORE = 60
-    MIN_SCORE = 50              # حداقل Score برای BUY (SELL از این مقدار مستثنی است)
+    MIN_SIGNAL_SCORE = 80
+    MIN_SCORE = 60              # حداقل Score برای BUY (SELL از این مقدار مستثنی است)
     MIN_DATA_QUALITY = 70
     MAX_RR_FOR_PRIORITY = 4.0
 
