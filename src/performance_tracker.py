@@ -85,6 +85,52 @@ class PerformanceTracker:
                 signal['failure_reason'] = None
             if 'indicator_scores' not in signal:
                 signal['indicator_scores'] = {}
+            
+            # ================================================
+            # فیلدهای جدید برای Paper Trading (اضافه شده)
+            # ================================================
+            if 'entry_price' not in signal:
+                signal['entry_price'] = None
+            if 'entry_price_slippage' not in signal:
+                signal['entry_price_slippage'] = None
+            if 'exit_price' not in signal:
+                signal['exit_price'] = None
+            if 'exit_price_slippage' not in signal:
+                signal['exit_price_slippage'] = None
+            if 'entry_time' not in signal:
+                signal['entry_time'] = None
+            if 'exit_time' not in signal:
+                signal['exit_time'] = None
+            if 'hold_time' not in signal:
+                signal['hold_time'] = None
+            if 'position_size' not in signal:
+                signal['position_size'] = 0.0
+            if 'stop_loss_price' not in signal:
+                signal['stop_loss_price'] = None
+            if 'take_profit_1' not in signal:
+                signal['take_profit_1'] = None
+            if 'take_profit_2' not in signal:
+                signal['take_profit_2'] = None
+            if 'exit_reason' not in signal:
+                signal['exit_reason'] = None
+            if 'profit_loss' not in signal:
+                signal['profit_loss'] = 0.0
+            if 'profit_loss_percent' not in signal:
+                signal['profit_loss_percent'] = 0.0
+            if 'gross_profit' not in signal:
+                signal['gross_profit'] = 0.0
+            if 'total_fee' not in signal:
+                signal['total_fee'] = 0.0
+            if 'buy_fee' not in signal:
+                signal['buy_fee'] = 0.0
+            if 'sell_fee' not in signal:
+                signal['sell_fee'] = 0.0
+            if 'score' not in signal:
+                signal['score'] = 0
+            if 'confidence' not in signal:
+                signal['confidence'] = 0
+            if 'timeframe' not in signal:
+                signal['timeframe'] = '15m'
         
         self.signals.extend(new_signals)
         
@@ -513,7 +559,11 @@ class PerformanceTracker:
         stop_loss: float,
         take_profit_1: float,
         take_profit_2: Optional[float] = None,
-        position_size: float = 0.25
+        position_size: float = 0.25,
+        score: float = 0.0,
+        confidence: float = 0.0,
+        indicator_scores: Optional[Dict[str, float]] = None,
+        timeframe: str = "15m"
     ) -> bool:
         """
         باز کردن یک معامله آزمایشی (Paper Trade)
@@ -526,9 +576,10 @@ class PerformanceTracker:
             take_profit_1: هدف اول
             take_profit_2: هدف دوم (اختیاری)
             position_size: درصد سرمایه (پیش‌فرض ۲۵٪)
-        
-        Returns:
-            True در صورت موفقیت
+            score: امتیاز سیگنال
+            confidence: درصد اطمینان
+            indicator_scores: دیکشنری امتیاز اندیکاتورها
+            timeframe: تایم‌فریم
         """
         # پیدا کردن آخرین سیگنال باز برای این نماد
         for signal in reversed(self.signals):
@@ -550,6 +601,12 @@ class PerformanceTracker:
                 signal['take_profit_2'] = take_profit_2
                 signal['position_size'] = position_size
                 signal['entry_time'] = datetime.now().isoformat()
+                signal['score'] = score
+                signal['confidence'] = confidence
+                signal['timeframe'] = timeframe
+                
+                if indicator_scores:
+                    signal['indicator_scores'] = indicator_scores
                 
                 self._save_signals()
                 logger.info(f"📈 Paper Trade OPENED: {symbol} {signal_type} @ {entry_with_slippage:.4f}")
@@ -562,18 +619,31 @@ class PerformanceTracker:
         self,
         symbol: str,
         exit_price: float,
-        exit_reason: str  # 'stop_loss', 'take_profit_1', 'take_profit_2'
+        exit_reason: str,
+        net_profit: float = 0.0,
+        net_profit_percent: float = 0.0,
+        total_fee: float = 0.0,
+        gross_profit: float = 0.0,
+        buy_fee: float = 0.0,
+        sell_fee: float = 0.0,
+        hold_time: str = "نامشخص",
+        outcome: str = "LOSS"
     ) -> bool:
         """
-        بستن یک معامله آزمایشی (Paper Trade)
+        بستن یک معامله آزمایشی با اطلاعات کامل مالی
         
         Args:
             symbol: نماد
             exit_price: قیمت خروج
             exit_reason: دلیل خروج
-        
-        Returns:
-            True در صورت موفقیت
+            net_profit: سود خالص
+            net_profit_percent: سود درصدی خالص
+            total_fee: کارمزد کل
+            gross_profit: سود ناخالص
+            buy_fee: کارمزد خرید
+            sell_fee: کارمزد فروش
+            hold_time: مدت باز بودن
+            outcome: WIN یا LOSS
         """
         # پیدا کردن سیگنال باز برای این نماد
         for signal in reversed(self.signals):
@@ -593,43 +663,23 @@ class PerformanceTracker:
                 else:  # SELL
                     exit_with_slippage = exit_price * (1 + slippage_factor)
                 
-                # محاسبه سود/ضرر
-                if signal_type == 'BUY':
-                    price_change = (exit_with_slippage - entry_price) / entry_price
-                else:  # SELL
-                    price_change = (entry_price - exit_with_slippage) / entry_price
-                
-                profit_loss = position_value * price_change
-                profit_loss_percent = price_change * 100
-                
-                # ثبت اطلاعات
+                # ثبت اطلاعات کامل مالی
                 signal['exit_price'] = exit_price
                 signal['exit_price_slippage'] = exit_with_slippage
                 signal['exit_time'] = datetime.now().isoformat()
                 signal['exit_reason'] = exit_reason
-                signal['profit_loss'] = profit_loss
-                signal['profit_loss_percent'] = profit_loss_percent
-                signal['outcome'] = 'WIN' if profit_loss > 0 else 'LOSS'
-                signal['r_value'] = profit_loss_percent / 2  # R-value ساده
-                
-                # محاسبه Hold Time
-                entry_time = signal.get('entry_time')
-                if entry_time:
-                    try:
-                        entry_dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00'))
-                        exit_dt = datetime.now()
-                        delta = exit_dt - entry_dt
-                        hours = delta.seconds // 3600
-                        minutes = (delta.seconds % 3600) // 60
-                        if delta.days > 0:
-                            signal['hold_time'] = f"{delta.days}d {hours}h {minutes}m"
-                        else:
-                            signal['hold_time'] = f"{hours}h {minutes}m"
-                    except Exception:
-                        signal['hold_time'] = None
+                signal['net_profit'] = net_profit
+                signal['net_profit_percent'] = net_profit_percent
+                signal['gross_profit'] = gross_profit
+                signal['total_fee'] = total_fee
+                signal['buy_fee'] = buy_fee
+                signal['sell_fee'] = sell_fee
+                signal['hold_time'] = hold_time
+                signal['outcome'] = outcome
+                signal['r_value'] = net_profit_percent / 2  # R-value ساده
                 
                 # ثبت دلیل شکست
-                if profit_loss < 0:
+                if net_profit < 0:
                     signal['failure_reason'] = f"hit_{exit_reason}"
                 
                 self._update_closed_signals()
@@ -639,8 +689,8 @@ class PerformanceTracker:
                 
                 logger.info(
                     f"📉 Paper Trade CLOSED: {symbol} {signal_type} "
-                    f"P/L={profit_loss:.2f} USDT ({profit_loss_percent:.2f}%) "
-                    f"Reason={exit_reason}"
+                    f"Net: {net_profit:.2f} USDT ({net_profit_percent:.2f}%) "
+                    f"Fee: {total_fee:.2f} USDT | Reason={exit_reason}"
                 )
                 return True
         
@@ -653,6 +703,6 @@ class PerformanceTracker:
         total_profit = 0
         
         for signal in self.closed_signals:
-            total_profit += signal.get('profit_loss', 0)
+            total_profit += signal.get('net_profit', signal.get('profit_loss', 0))
         
         return total_balance + total_profit
