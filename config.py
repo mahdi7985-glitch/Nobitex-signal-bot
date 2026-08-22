@@ -460,7 +460,10 @@ class Config:
         if total_weight != 100:
             warnings.append(f"Total weight is {total_weight}, should be 100")
 
-        if not (cls.MIN_SIGNAL_SCORE < cls.NORMAL_SIGNAL_SCORE < cls.STRONG_SIGNAL_SCORE):
+        # ================================================
+        # اصلاح شده: همه ۵ سطح رو چک می‌کنه
+        # ================================================
+        if not (cls.WEAK_SIGNAL_SCORE < cls.NORMAL_SIGNAL_SCORE < cls.STRONG_SIGNAL_SCORE < cls.VERY_STRONG_SIGNAL_SCORE < cls.EXCEPTIONAL_SIGNAL_SCORE):
             errors.append("SCORE levels must be in increasing order")
 
         if cls.ENABLE_AI_ANALYSIS and cls.AI_REQUIRED and not cls.AI_API_KEY:
