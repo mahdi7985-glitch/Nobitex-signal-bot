@@ -559,7 +559,7 @@ class BaleBot:
             emoji = emoji_map.get(key, '🔹')
             status = "✅" if value >= info['min'] else "⚠️"
             
-            # تعیین وضعیت
+                        # تعیین وضعیت
             if outcome == 'WIN':
                 if value >= info['optimal']:
                     status_text = "عالی ✅"
@@ -605,7 +605,8 @@ class BaleBot:
         score: float,
         timeframe: str = "15m",
         confidence: float = 0.0,
-        indicator_scores: Optional[Dict[str, float]] = None
+        indicator_scores: Optional[Dict[str, float]] = None,
+        position_value: Optional[float] = None  # <-- پارامتر جدید
     ) -> bool:
         """
         ارسال پیام باز شدن معامله (خرید/فروش)
@@ -624,6 +625,7 @@ class BaleBot:
             timeframe: تایم‌فریم
             confidence: درصد اطمینان
             indicator_scores: دیکشنری امتیاز اندیکاتورها
+            position_value: مقدار واقعی سرمایه معامله (اختیاری)
         """
         persian_date = self._get_persian_datetime()
         
@@ -633,7 +635,9 @@ class BaleBot:
         action_text = "باز شد" if signal_type == 'BUY' else "باز شد"
         
         position_percent = position_size * 100
-        position_value = 530 * position_size  # فرض سرمایه اولیه 530
+        # اگر position_value ارسال نشده، از مقدار پیش‌فرض استفاده کن
+        if position_value is None:
+            position_value = 530 * position_size
         
         lines = [
             "━━━━━━━━━━━━━━━━━━━━",
@@ -724,7 +728,8 @@ class BaleBot:
         win_rate: float,
         score: float,
         indicator_scores: Dict[str, float],
-        outcome: str  # 'WIN' یا 'LOSS'
+        outcome: str,  # 'WIN' یا 'LOSS'
+        position_value: Optional[float] = None  # <-- پارامتر جدید
     ) -> bool:
         """
         ارسال پیام بسته شدن معامله با تحلیل اندیکاتورها
@@ -751,6 +756,7 @@ class BaleBot:
             score: امتیاز سیگنال
             indicator_scores: دیکشنری امتیاز اندیکاتورها
             outcome: 'WIN' یا 'LOSS'
+            position_value: مقدار واقعی سرمایه معامله (اختیاری)
         """
         persian_date = self._get_persian_datetime()
         
@@ -778,6 +784,10 @@ class BaleBot:
         else:  # SELL
             price_change = ((entry_price - exit_price) / entry_price) * 100
         
+        # اگر position_value ارسال نشده، از مقدار پیش‌فرض استفاده کن
+        if position_value is None:
+            position_value = 132.50  # مقدار ثابت قبلی برای سازگاری
+        
         lines = [
             "━━━━━━━━━━━━━━━━━━━━",
             f"{emoji} <b>معامله بسته شد!</b> ({signal_fa})",
@@ -796,7 +806,7 @@ class BaleBot:
             "━━━━━━━━━━━━━━━━━━━━",
             "<b>💰 جزئیات مالی:</b>",
             "━━━━━━━━━━━━━━━━━━━━",
-            f"💵 <b>سرمایه‌ی معامله:</b> ۱۳۲.۵۰ USDT",
+            f"💵 <b>سرمایه‌ی معامله:</b> {position_value:.2f} USDT",
             f"💵 <b>سرمایه‌ی نهایی:</b> {self._format_number_fa(abs(net_profit))} USDT",
             "",
             f"📊 <b>{result_text} خالص:</b> {sign}{net_profit:.2f} USDT {emoji}",
@@ -948,4 +958,3 @@ class BaleBot:
         lines.append(f"<i>🕐 {persian_date}</i>")
         
         return self.send_message("\n".join(lines))
-        
