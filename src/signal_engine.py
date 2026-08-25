@@ -31,6 +31,12 @@ class SignalEngine:
         self.MIN_DATA_QUALITY = config.MIN_DATA_QUALITY
         self.MAX_RR_FOR_PRIORITY = config.MAX_RR_FOR_PRIORITY
         self.MIN_SELL_CONFIDENCE = config.MIN_SELL_CONFIDENCE
+        
+        # ================================================
+        # آستانههای متقارن BUY/SELL (اضافه شده)
+        # ================================================
+        self.BUY_THRESHOLD = config.BUY_THRESHOLD
+        self.SELL_THRESHOLD = config.SELL_THRESHOLD
 
     def _format_price(self, price: float) -> float:
         """
@@ -722,7 +728,7 @@ class SignalEngine:
         # محدود کردن نهایی
         # ================================================
         # اگر Score پایین است، Confidence نمیتواند خیلی بالا باشد
-        if score < 70:
+        if score < self.BUY_THRESHOLD and score > self.SELL_THRESHOLD:
             confidence = min(confidence, score + 10)
 
         # اگر Score بالا است، Confidence را محدود نمیکنیم
@@ -756,7 +762,7 @@ class SignalEngine:
         # EXCEPTIONAL BUY
         # ================================================
         if (
-            score >= 85 and
+            score >= self.config.EXCEPTIONAL_SIGNAL_SCORE and
             adx > 40 and
             di_plus > di_minus and
             macd_line is not None and macd_signal is not None and
@@ -770,7 +776,7 @@ class SignalEngine:
         # EXCEPTIONAL SELL (متقارن + تأییدات اضافی)
         # ================================================
         elif (
-            score <= 15 and
+            score <= (100 - self.config.EXCEPTIONAL_SIGNAL_SCORE) and  # 10
             adx > 40 and
             di_minus > di_plus and
             macd_line is not None and macd_signal is not None and
@@ -790,7 +796,7 @@ class SignalEngine:
             support = sr_levels.get('support')
 
             if (
-                score >= 80 and
+                score >= (self.BUY_THRESHOLD + 15) and  # 80
                 resistance is not None and
                 price > resistance and
                 volume_ratio > 2.5 and
@@ -805,7 +811,7 @@ class SignalEngine:
             # BREAKOUT EXCEPTIONAL SELL (متقارن + تأییدات اضافی)
             # ================================================
             elif (
-                score <= 20 and
+                score <= (self.SELL_THRESHOLD - 15) and  # 20
                 support is not None and
                 price < support and
                 volume_ratio > 2.5 and
@@ -817,21 +823,21 @@ class SignalEngine:
                 exceptional_reason = "breakout_support_with_high_volume"
 
         # ================================================
-        # تعیین سیگنال اصلی (متقارن)
+        # تعیین سیگنال اصلی (متقارن با آستانههای جدید)
         # ================================================
-        if score >= 70:
+        if score >= self.BUY_THRESHOLD:
             action = "BUY"
-            if score >= 90:
+            if score >= self.config.EXCEPTIONAL_SIGNAL_SCORE:
                 strength = "VERY_STRONG"
-            elif score >= 80:
+            elif score >= self.config.STRONG_SIGNAL_SCORE:
                 strength = "STRONG"
             else:
                 strength = "NORMAL"
-        elif score <= 30:
+        elif score <= self.SELL_THRESHOLD:
             action = "SELL"
-            if score <= 10:
+            if score <= (100 - self.config.EXCEPTIONAL_SIGNAL_SCORE):  # 10
                 strength = "VERY_STRONG"
-            elif score <= 20:
+            elif score <= (100 - self.config.STRONG_SIGNAL_SCORE):  # 20
                 strength = "STRONG"
             else:
                 strength = "NORMAL"
@@ -846,14 +852,8 @@ class SignalEngine:
 
         # ================================================
         # بررسی تأییدات اضافی برای SELL
-        # (این شروط فقط برای SELL اعمال میشوند)
         # ================================================
         if action == "SELL":
-            # شرایط موردنیاز برای SELL:
-            # 1. DI- > DI+
-            # 2. MACD Line < MACD Signal
-            # 3. MACD Histogram < 0
-            # 4. ADX >= 25
             sell_conditions_met = (
                 di_minus > di_plus and
                 macd_line is not None and
@@ -864,7 +864,6 @@ class SignalEngine:
             )
             
             if not sell_conditions_met:
-                # تعریف شرط MACD به صورت صحیح برای لاگ
                 macd_condition = (
                     macd_line is not None and
                     macd_signal is not None and
