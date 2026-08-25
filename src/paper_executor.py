@@ -23,16 +23,47 @@ class PaperExecutor(ExecutionInterface):
     def __init__(self, config=Config, initial_balance: float = 530.0):
         self.config = config
         self.initial_balance = initial_balance
-        self.current_balance = initial_balance
-        self.positions: Dict[str, Dict[str, Any]] = {}
         self.tracker = PerformanceTracker(config)
         self.bale_bot = BaleBot(config)
-        self.slippage_factor = 0.0015  # ۰.۱۵٪
-        self.position_size = 0.25  # ۲۵٪ سرمایه
+        self.slippage_factor = 0.0015
+        self.position_size = 0.25
         self.timeframe = config.TIMEFRAME
         self.total_closed_trades = 0
         self.win_count = 0
         self.loss_count = 0
+        self.positions: Dict[str, Dict[str, Any]] = {}
+        
+        # ================================================
+        # بارگذاری موجودی از PerformanceTracker
+        # ================================================
+        self.current_balance = self._load_balance()
+        
+        # به‌روزرسانی آمار
+        self._load_stats()
+        
+        logger.info(f"💰 Paper Executor initialized with balance: {self.current_balance:.2f} USDT")
+    
+    def _load_balance(self) -> float:
+        """بارگذاری موجودی از PerformanceTracker"""
+        balance = self.initial_balance
+        
+        # اضافه کردن سود/ضرر معاملات بسته‌شده
+        for signal in self.tracker.closed_signals:
+            balance += signal.get('net_profit', signal.get('profit_loss', 0))
+        
+        # کم کردن سرمایه‌ی معاملات باز
+        for signal in self.tracker.signals:
+            if signal.get('outcome') == 'OPEN':
+                position_size = signal.get('position_size', 0.25)
+                balance -= self.initial_balance * position_size
+        
+        return max(balance, 0.0)
+    
+    def _load_stats(self):
+        """بارگذاری آمار معاملات"""
+        self.total_closed_trades = len(self.tracker.closed_signals)
+        self.win_count = sum(1 for s in self.tracker.closed_signals if s.get('outcome') == 'WIN')
+        self.loss_count = self.total_closed_trades - self.win_count
     
     def execute_buy(self, symbol: str, price: float, stop_loss: float, take_profit: float, size: float = 0.25, signal_data: Optional[Dict] = None) -> bool:
         """اجرای خرید آزمایشی"""
@@ -100,12 +131,12 @@ class PaperExecutor(ExecutionInterface):
             timeframe=timeframe,
             confidence=confidence,
             indicator_scores=indicator_scores,
-            position_value=position_value  # <-- مقدار واقعی سرمایه معامله
+            position_value=position_value
         )
         
         logger.info(
             f"📈 PAPER BUY: {symbol} @ {entry_price:.4f} "
-            f"(Size: {size*100}%, Value: {position_value:.2f} USDT)"
+            f"(Size: {size*100}%, Value: {position_value:.2f} USDT, Balance: {self.current_balance:.2f} USDT)"
         )
         return True
     
@@ -175,12 +206,12 @@ class PaperExecutor(ExecutionInterface):
             timeframe=timeframe,
             confidence=confidence,
             indicator_scores=indicator_scores,
-            position_value=position_value  # <-- مقدار واقعی سرمایه معامله
+            position_value=position_value
         )
         
         logger.info(
             f"📈 PAPER SELL: {symbol} @ {entry_price:.4f} "
-            f"(Size: {size*100}%, Value: {position_value:.2f} USDT)"
+            f"(Size: {size*100}%, Value: {position_value:.2f} USDT, Balance: {self.current_balance:.2f} USDT)"
         )
         return True
     
@@ -356,7 +387,7 @@ class PaperExecutor(ExecutionInterface):
             score=position.get('score', 0),
             indicator_scores=position.get('indicator_scores', {}),
             outcome=outcome,
-            position_value=position_value  # <-- مقدار واقعی سرمایه معامله
+            position_value=position_value
         )
         
         logger.info(
