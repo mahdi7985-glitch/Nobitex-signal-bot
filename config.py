@@ -280,10 +280,17 @@ class Config:
         "support_resistance": 10,
     }
 
+    # ================================================
+    # آستانه‌های سیگنال (اصلاح شده برای متقارن شدن)
+    # ================================================
     MIN_SIGNAL_SCORE = 80
-    MIN_SCORE = 60              # حداقل Score برای BUY (SELL از این مقدار مستثنی است)
+    MIN_SCORE = 50                  # حداقل Score برای WAIT شدن (کاهش یافته از 60)
     MIN_DATA_QUALITY = 70
     MAX_RR_FOR_PRIORITY = 4.0
+
+    # آستانه‌های جدید برای BUY و SELL (متقارن)
+    BUY_THRESHOLD = 65              # حداقل Score برای سیگنال BUY
+    SELL_THRESHOLD = 35             # حداکثر Score برای سیگنال SELL
 
     WEAK_SIGNAL_SCORE = 60
     NORMAL_SIGNAL_SCORE = 70
@@ -461,7 +468,25 @@ class Config:
             warnings.append(f"Total weight is {total_weight}, should be 100")
 
         # ================================================
-        # اصلاح شده: همه ۵ سطح رو چک می‌کنه
+        # اعتبارسنجی آستانه‌های BUY/SELL (اضافه شده)
+        # ================================================
+        if cls.BUY_THRESHOLD <= cls.SELL_THRESHOLD:
+            errors.append(f"BUY_THRESHOLD ({cls.BUY_THRESHOLD}) must be greater than SELL_THRESHOLD ({cls.SELL_THRESHOLD})")
+
+        if not (0 <= cls.BUY_THRESHOLD <= 100):
+            errors.append(f"BUY_THRESHOLD ({cls.BUY_THRESHOLD}) must be between 0 and 100")
+
+        if not (0 <= cls.SELL_THRESHOLD <= 100):
+            errors.append(f"SELL_THRESHOLD ({cls.SELL_THRESHOLD}) must be between 0 and 100")
+
+        if cls.BUY_THRESHOLD < cls.MIN_SCORE:
+            warnings.append(f"BUY_THRESHOLD ({cls.BUY_THRESHOLD}) is less than MIN_SCORE ({cls.MIN_SCORE}) - BUY signals may be filtered out")
+
+        if cls.SELL_THRESHOLD > cls.MIN_SCORE:
+            warnings.append(f"SELL_THRESHOLD ({cls.SELL_THRESHOLD}) is greater than MIN_SCORE ({cls.MIN_SCORE}) - SELL signals may be filtered out")
+
+        # ================================================
+        # اعتبارسنجی سطوح امتیاز
         # ================================================
         if not (cls.WEAK_SIGNAL_SCORE < cls.NORMAL_SIGNAL_SCORE < cls.STRONG_SIGNAL_SCORE < cls.VERY_STRONG_SIGNAL_SCORE < cls.EXCEPTIONAL_SIGNAL_SCORE):
             errors.append("SCORE levels must be in increasing order")
@@ -493,7 +518,9 @@ class Config:
         ✅ Symbols: {len(active_symbols)} active
         ✅ Timeframe: {cls.TIMEFRAME}
         ✅ Scan Interval: {cls.SCAN_INTERVAL}s
-        ✅ Min Score for BUY: {cls.MIN_SCORE}
+        ✅ Min Score for WAIT: {cls.MIN_SCORE}
+        ✅ BUY Threshold: {cls.BUY_THRESHOLD}
+        ✅ SELL Threshold: {cls.SELL_THRESHOLD}
         ✅ Min Data Quality: {cls.MIN_DATA_QUALITY}
         ✅ Min Acceptable RR: {cls.MIN_ACCEPTABLE_RR}
         ✅ Min SELL Confidence: {cls.MIN_SELL_CONFIDENCE}
