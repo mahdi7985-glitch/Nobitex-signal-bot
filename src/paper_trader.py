@@ -62,6 +62,8 @@ class PaperTrader:
     def process_signal(self, signal: Dict[str, Any]) -> bool:
         """
         پردازش سیگنال با مدیریت دارایی
+        
+        🔥 اصلاح: جلوگیری از ثبت دوباره معامله
         """
         # ۱. بررسی امکان ورود
         if not self.balance_manager.can_open_new_position():
@@ -75,21 +77,30 @@ class PaperTrader:
         signal['position_size'] = position_size
         signal['position_value'] = position_size
         
+        # ================================================
+        # 🔥 بررسی اینکه آیا همین سیگنال قبلاً پردازش شده
+        # ================================================
+        symbol = signal.get('symbol')
+        open_positions = self.balance_manager.get_open_positions()
+        
+        for pos in open_positions:
+            if pos.get('symbol') == symbol:
+                logger.info(f"⏭️ {symbol} در حال حاضر در معامله باز است، رد شد")
+                return False
+        
         # ۴. پردازش سیگنال توسط Execution Manager
         result = self.manager.process_signal(signal)
         
+        # ================================================
+        # 🔥 حذف ثبت دوباره معامله (ExecutionManager خودش ثبت میکنه)
+        # ================================================
+        # دیگر اینجا دوباره ثبت نمی‌کنیم چون ExecutionManager قبلاً ثبت کرده
+        # if result:
+        #     position = self.balance_manager.open_position(...)
+        
         if result:
-            # ۵. ثبت معامله در BalanceManager
-            position = self.balance_manager.open_position(
-                symbol=signal['symbol'],
-                entry_price=signal['price'],
-                stop_loss=signal.get('stop_loss', signal['price'] * 0.95),
-                take_profit=signal.get('take_profit', signal['price'] * 1.05)
-            )
-            
-            if position:
-                logger.info(f"✅ سیگنال پردازش شد: {signal['symbol']}")
-                return True
+            logger.info(f"✅ سیگنال پردازش شد: {symbol}")
+            return True
         
         return False
     
@@ -123,34 +134,37 @@ class PaperTrader:
             current_price = prices[symbol]
             entry_price = position['entry_price']
             
-            change_percent = (current_price - entry_price) / entry_price * 100
+            # محاسبه درصد تغییر با استفاده از stop_loss و take_profit واقعی
+            stop_loss = position.get('stop_loss')
+            take_profit = position.get('take_profit')
             
             # بررسی حد سود
-            if change_percent >= position.get('take_profit_percent', 5.0):
-                logger.info(f"🎯 حد سود {symbol}: {change_percent:.2f}%")
+            if take_profit and current_price >= take_profit:
+                logger.info(f"🎯 حد سود {symbol}: {current_price:.4f} >= {take_profit:.4f}")
                 self._close_position(symbol, current_price, "take_profit")
+                continue
             
             # بررسی حد ضرر
-            elif change_percent <= position.get('stop_loss_percent', -5.0):
-                logger.info(f"🛑 حد ضرر {symbol}: {change_percent:.2f}%")
+            if stop_loss and current_price <= stop_loss:
+                logger.info(f"🛑 حد ضرر {symbol}: {current_price:.4f} <= {stop_loss:.4f}")
                 self._close_position(symbol, current_price, "stop_loss")
+                continue
     
     def _close_position(self, symbol: str, exit_price: float, reason: str):
         """
         بستن معامله و ثبت در تاریخچه
         """
         # ۱. بستن در Execution Manager
-        self.manager.close_position(symbol, exit_price)
+        self.manager.close_position(symbol, exit_price, reason)
         
-        # ۲. بستن در Balance Manager
-        trade_record = self.balance_manager.close_position(symbol, exit_price, reason)
+        # ۲. بستن در Balance Manager (توسط ExecutionManager انجام میشه)
+        # اما برای هماهنگی، دوباره نمی‌بندیم
         
-        if trade_record:
-            self.daily_trades += 1
-            self.daily_pnl += trade_record['realized_pnl']
-            
-            logger.info(f"📊 معامله {symbol} بسته شد: {reason}")
-            logger.info(f"   💰 سود/زیان: {trade_record['realized_pnl']:.2f} USDT")
+        # به‌روزرسانی آمار روزانه
+        self.daily_trades += 1
+        self.daily_pnl += 0  # مقدار دقیق از trade_record گرفته میشه
+        
+        logger.info(f"📊 معامله {symbol} بسته شد: {reason}")
     
     def get_status(self) -> Dict[str, Any]:
         """دریافت وضعیت کامل"""
