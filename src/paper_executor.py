@@ -34,7 +34,7 @@ class PaperExecutor(ExecutionInterface):
         self.positions: Dict[str, Dict[str, Any]] = {}
         
         # ================================================
-        # بارگذاری موجودی از PerformanceTracker
+        # موجودی به USDT
         # ================================================
         self.current_balance = self._load_balance()
         
@@ -66,14 +66,29 @@ class PaperExecutor(ExecutionInterface):
         self.loss_count = self.total_closed_trades - self.win_count
     
     def execute_buy(self, symbol: str, price: float, stop_loss: float, take_profit: float, size: float = 0.25, signal_data: Optional[Dict] = None) -> bool:
-        """اجرای خرید آزمایشی"""
+        """
+        اجرای خرید آزمایشی
+        
+        🔥 size به USDT است
+        """
         if self.current_balance <= 0:
             logger.error(f"❌ Insufficient balance for {symbol}")
             return False
         
+        # ================================================
+        # 🔥 تبدیل حجم به USDT (قبلاً به کوین تبدیل می‌شد)
+        # ================================================
+        position_value = size  # size همان USDT است
+        
+        # بررسی موجودی کافی
+        if position_value > self.current_balance:
+            logger.error(f"❌ Insufficient balance: need {position_value:.2f} USDT, have {self.current_balance:.2f} USDT")
+            return False
+        
+        # محاسبه تعداد کوین برای نمایش
+        quantity = position_value / price
+        
         entry_price = price * (1 + self.slippage_factor)
-        position_value = self.current_balance * size
-        quantity = position_value / entry_price
         
         score = signal_data.get('score', 0) if signal_data else 0
         confidence = signal_data.get('confidence', 0) if signal_data else 0
@@ -85,10 +100,10 @@ class PaperExecutor(ExecutionInterface):
             'entry_price': price,
             'entry_price_slippage': entry_price,
             'quantity': quantity,
-            'position_value': position_value,
+            'position_value': position_value,  # 🔥 به USDT
             'stop_loss': stop_loss,
             'take_profit': take_profit,
-            'size': size,
+            'size': size,  # 🔥 size به USDT
             'entry_time': datetime.now().isoformat(),
             'status': 'OPEN',
             'score': score,
@@ -98,6 +113,7 @@ class PaperExecutor(ExecutionInterface):
             'signal_data': signal_data
         }
         
+        # کاهش موجودی
         self.current_balance -= position_value
         
         self.tracker.open_paper_trade(
@@ -136,19 +152,34 @@ class PaperExecutor(ExecutionInterface):
         
         logger.info(
             f"📈 PAPER BUY: {symbol} @ {entry_price:.4f} "
-            f"(Size: {size*100}%, Value: {position_value:.2f} USDT, Balance: {self.current_balance:.2f} USDT)"
+            f"(Value: {position_value:.2f} USDT, Quantity: {quantity:.4f}, Balance: {self.current_balance:.2f} USDT)"
         )
         return True
     
     def execute_sell(self, symbol: str, price: float, stop_loss: float, take_profit: float, size: float = 0.25, signal_data: Optional[Dict] = None) -> bool:
-        """اجرای فروش آزمایشی"""
+        """
+        اجرای فروش آزمایشی
+        
+        🔥 size به USDT است
+        """
         if self.current_balance <= 0:
             logger.error(f"❌ Insufficient balance for {symbol}")
             return False
         
+        # ================================================
+        # 🔥 تبدیل حجم به USDT (قبلاً به کوین تبدیل می‌شد)
+        # ================================================
+        position_value = size  # size همان USDT است
+        
+        # بررسی موجودی کافی
+        if position_value > self.current_balance:
+            logger.error(f"❌ Insufficient balance: need {position_value:.2f} USDT, have {self.current_balance:.2f} USDT")
+            return False
+        
+        # محاسبه تعداد کوین برای نمایش
+        quantity = position_value / price
+        
         entry_price = price * (1 - self.slippage_factor)
-        position_value = self.current_balance * size
-        quantity = position_value / entry_price
         
         score = signal_data.get('score', 0) if signal_data else 0
         confidence = signal_data.get('confidence', 0) if signal_data else 0
@@ -160,10 +191,10 @@ class PaperExecutor(ExecutionInterface):
             'entry_price': price,
             'entry_price_slippage': entry_price,
             'quantity': quantity,
-            'position_value': position_value,
+            'position_value': position_value,  # 🔥 به USDT
             'stop_loss': stop_loss,
             'take_profit': take_profit,
-            'size': size,
+            'size': size,  # 🔥 size به USDT
             'entry_time': datetime.now().isoformat(),
             'status': 'OPEN',
             'score': score,
@@ -173,6 +204,7 @@ class PaperExecutor(ExecutionInterface):
             'signal_data': signal_data
         }
         
+        # کاهش موجودی
         self.current_balance -= position_value
         
         self.tracker.open_paper_trade(
@@ -211,7 +243,7 @@ class PaperExecutor(ExecutionInterface):
         
         logger.info(
             f"📈 PAPER SELL: {symbol} @ {entry_price:.4f} "
-            f"(Size: {size*100}%, Value: {position_value:.2f} USDT, Balance: {self.current_balance:.2f} USDT)"
+            f"(Value: {position_value:.2f} USDT, Quantity: {quantity:.4f}, Balance: {self.current_balance:.2f} USDT)"
         )
         return True
     
@@ -228,11 +260,16 @@ class PaperExecutor(ExecutionInterface):
         return True
     
     def get_balance(self) -> float:
-        total_value = self.current_balance
+        """دریافت موجودی (فقط USDT)"""
+        return self.current_balance
+    
+    def get_total_equity(self) -> float:
+        """دریافت کل دارایی (USDT + موقعیت‌های باز)"""
+        total = self.current_balance
         for symbol, position in self.positions.items():
             if position['status'] == 'OPEN':
-                total_value += position['position_value']
-        return total_value
+                total += position['position_value']
+        return total
     
     def get_position(self, symbol: str) -> Optional[Dict[str, Any]]:
         return self.positions.get(symbol)
@@ -277,7 +314,7 @@ class PaperExecutor(ExecutionInterface):
         position = self.positions[symbol]
         signal_type = position['type']
         entry_price = position['entry_price_slippage']
-        position_value = position['position_value']
+        position_value = position['position_value']  # 🔥 به USDT
         
         fee_rate = 0.0015
         
@@ -286,6 +323,7 @@ class PaperExecutor(ExecutionInterface):
         else:
             exit_with_slippage = exit_price * (1 + self.slippage_factor)
         
+        # محاسبه سود/زیان بر اساس USDT
         if signal_type == 'BUY':
             price_change = (exit_with_slippage - entry_price) / entry_price
         else:
@@ -300,6 +338,7 @@ class PaperExecutor(ExecutionInterface):
         net_profit = gross_profit - total_fee
         net_profit_percent = (net_profit / position_value) * 100
         
+        # به‌روزرسانی موجودی
         self.current_balance += position_value + net_profit
         
         position['status'] = 'CLOSED'
@@ -400,3 +439,8 @@ class PaperExecutor(ExecutionInterface):
     
     def get_performance_summary(self) -> Dict[str, Any]:
         return self.tracker.get_performance_summary()
+    
+    def reset_balance(self, new_balance: float):
+        """بازنشانی موجودی"""
+        self.current_balance = new_balance
+        logger.info(f"🔄 Balance reset to: {new_balance:.2f} USDT")
