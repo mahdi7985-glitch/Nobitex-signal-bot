@@ -196,7 +196,9 @@ class SignalEngine:
                     'exceptional': False,
                     'exceptional_reason': None,
                     'timestamp': pd.Timestamp.now(),
-                    'data_quality': data_quality
+                    'data_quality': data_quality,
+                    'position_size': 0.0,
+                    'position_value': 0.0
                 }
 
             # ================================================
@@ -261,7 +263,9 @@ class SignalEngine:
                         'exceptional_reason': signal.get('exceptional_reason'),
                         'reason': f'Low R/R: {risk_levels.get("risk_reward", 0):.2f}',
                         'timestamp': pd.Timestamp.now(),
-                        'data_quality': data_quality
+                        'data_quality': data_quality,
+                        'position_size': 0.0,
+                        'position_value': 0.0
                     }
 
                 # تبدیل قیمتها برای نمایش (فقط خروجی)
@@ -304,7 +308,9 @@ class SignalEngine:
                     'exceptional_reason': signal.get('exceptional_reason'),
                     'reason': f'Low confidence for SELL: {confidence:.1f}%',
                     'timestamp': pd.Timestamp.now(),
-                    'data_quality': data_quality
+                    'data_quality': data_quality,
+                    'position_size': 0.0,
+                    'position_value': 0.0
                 }
 
             # ================================================
@@ -352,7 +358,12 @@ class SignalEngine:
                 'tp2_raw': risk_levels.get('tp2_raw'),
                 'risk_reward': risk_levels_display['risk_reward'],
                 'timestamp': pd.Timestamp.now(),
-                'data_quality': data_quality
+                'data_quality': data_quality,
+                # ================================================
+                # 🔥 اضافه شده برای هماهنگی با ExecutionManager
+                # ================================================
+                'position_size': 0.25,  # مقدار پیشفرض (ExecutionManager بازنویسی میکنه)
+                'position_value': 0.25,  # برای Paper Trading
             }
 
         except Exception as e:
@@ -771,7 +782,6 @@ class SignalEngine:
         ):
             exceptional = True
             exceptional_reason = "very_strong_uptrend_confirmed"
-
         # ================================================
         # EXCEPTIONAL SELL (متقارن + تأییدات اضافی)
         # ================================================
