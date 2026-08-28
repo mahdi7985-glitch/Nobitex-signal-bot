@@ -1,73 +1,299 @@
 """
 Balance Manager Module
-Manages persistent balance storage across bot runs
+مدیریت پیشرفته دارایی با قابلیت ذخیره‌سازی موقعیت‌های باز
 """
 
 import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict
+from dataclasses import dataclass, asdict
 
 from config import Config
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class Position:
+    """مدل موقعیت معاملاتی"""
+    symbol: str
+    entry_price: float
+    position_size: float
+    entry_time: str
+    stop_loss: float
+    take_profit: float
+    side: str = "LONG"
+    unrealized_pnl: float = 0.0
+    status: str = "open"
+
+
+@dataclass
+class PortfolioState:
+    """وضعیت کامل پورتفوی"""
+    current_balance: float
+    total_equity: float
+    initial_balance: float
+    open_positions: List[Dict]
+    closed_trades: List[Dict]
+    updated_at: str
+    
+    def to_dict(self):
+        return {
+            'current_balance': self.current_balance,
+            'total_equity': self.total_equity,
+            'initial_balance': self.initial_balance,
+            'open_positions': self.open_positions,
+            'closed_trades': self.closed_trades[-100:],  # فقط ۱۰۰ معامله آخر
+            'updated_at': self.updated_at
+        }
+
+
 class BalanceManager:
     """
-    مدیریت ذخیره و بازیابی موجودی بین سیکل‌ها و معاملات
+    مدیریت پیشرفته دارایی با پشتیبانی از:
+    - ذخیره و بازیابی خودکار
+    - مدیریت موقعیت‌های باز
+    - محاسبه سود/زیان تحقق‌نیافته
+    - جلوگیری از ریست شدن دارایی
     """
     
     def __init__(self, config=Config):
         self.config = config
-        self.balance_file = config.DATA_DIR / "balance.json"
+        self.balance_file = config.DATA_DIR / "portfolio_state.json"
         self.initial_balance = 530.0
-        self._balance = self._load_balance()
+        
+        # تنظیمات مدیریت سرمایه
+        self.max_positions = 3  # حداکثر معاملات همزمان
+        self.position_size_ratio = 0.2  # ۲۰٪ از کل دارایی برای هر معامله
+        
+        # بارگذاری وضعیت
+        self._load_or_initialize()
     
-    def _load_balance(self) -> float:
-        """بارگذاری موجودی از فایل"""
+    def _load_or_initialize(self):
+        """بارگذاری وضعیت یا مقداردهی اولیه"""
         if self.balance_file.exists():
             try:
-                with open(self.balance_file, 'r') as f:
+                with open(self.balance_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    balance = data.get('balance', self.initial_balance)
-                    updated_at = data.get('updated_at', 'unknown')
-                    logger.info(f"💰 Loaded balance from file: {balance:.2f} USDT (updated: {updated_at})")
-                    return balance
+                    
+                    self._balance = data.get('current_balance', self.initial_balance)
+                    self._total_equity = data.get('total_equity', self._balance)
+                    self._open_positions = data.get('open_positions', [])
+                    self._closed_trades = data.get('closed_trades', [])
+                    
+                    logger.info(f"✅ وضعیت بازیابی شد:")
+                    logger.info(f"   💰 موجودی نقد: {self._balance:.2f} USDT")
+                    logger.info(f"   📊 کل دارایی: {self._total_equity:.2f} USDT")
+                    logger.info(f"   📈 معاملات باز: {len(self._open_positions)}")
+                    logger.info(f"   📉 تاریخچه: {len(self._closed_trades)} معامله")
+                    return
             except Exception as e:
-                logger.error(f"Error loading balance: {e}")
+                logger.error(f"❌ خطا در بارگذاری: {e}")
         
-        logger.info(f"💰 Using initial balance: {self.initial_balance:.2f} USDT")
-        return self.initial_balance
+        # مقداردهی اولیه
+        self._balance = self.initial_balance
+        self._total_equity = self.initial_balance
+        self._open_positions = []
+        self._closed_trades = []
+        logger.info(f"💰 شروع با سرمایه: {self.initial_balance:.2f} USDT")
+        self._save_state()
     
-    def save_balance(self, balance: float):
-        """ذخیره موجودی در فایل"""
+    def _save_state(self):
+        """ذخیره وضعیت کامل پورتفوی"""
         try:
             self.balance_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.balance_file, 'w') as f:
-                json.dump({
-                    'balance': balance,
-                    'updated_at': datetime.now().isoformat(),
-                    'initial_balance': self.initial_balance
-                }, f, indent=2)
-            self._balance = balance
-            logger.info(f"💰 Saved balance: {balance:.2f} USDT")
+            
+            state = PortfolioState(
+                current_balance=self._balance,
+                total_equity=self._total_equity,
+                initial_balance=self.initial_balance,
+                open_positions=self._open_positions,
+                closed_trades=self._closed_trades,
+                updated_at=datetime.now().isoformat()
+            )
+            
+            with open(self.balance_file, 'w', encoding='utf-8') as f:
+                json.dump(state.to_dict(), f, indent=2, ensure_ascii=False)
+                
         except Exception as e:
-            logger.error(f"Error saving balance: {e}")
+            logger.error(f"❌ خطا در ذخیره وضعیت: {e}")
+    
+    # ============ متدهای عمومی ============
     
     def get_balance(self) -> float:
-        """دریافت موجودی فعلی"""
+        """دریافت موجودی نقد"""
         return self._balance
     
-    def update_balance(self, new_balance: float):
-        """به‌روزرسانی موجودی و ذخیره در فایل"""
-        self._balance = new_balance
-        self.save_balance(new_balance)
+    def get_total_equity(self) -> float:
+        """دریافت کل دارایی (با احتساب سود/زیان موقعیت‌های باز)"""
+        return self._total_equity
     
-    def reset_balance(self, balance: Optional[float] = None):
-        """بازنشانی موجودی به مقدار اولیه یا مقدار مشخص"""
-        if balance is None:
-            balance = self.initial_balance
-        self.update_balance(balance)
-        logger.info(f"🔄 Balance reset to: {balance:.2f} USDT")
+    def get_open_positions(self) -> List[Dict]:
+        """دریافت لیست موقعیت‌های باز"""
+        return self._open_positions
+    
+    def can_open_new_position(self) -> bool:
+        """بررسی امکان باز کردن معامله جدید"""
+        if len(self._open_positions) >= self.max_positions:
+            logger.warning(f"⛔ حداکثر معاملات همزمان ({self.max_positions}) پر شده")
+            return False
+        
+        min_required = self._total_equity * self.position_size_ratio
+        if self._balance < min_required:
+            logger.warning(f"⛔ موجودی ناکافی: {self._balance:.2f} < نیاز {min_required:.2f}")
+            return False
+        
+        return True
+    
+    def get_position_size(self) -> float:
+        """محاسبه حجم معامله بر اساس کل دارایی"""
+        return self._total_equity * self.position_size_ratio
+    
+    def open_position(self, symbol: str, entry_price: float, 
+                     stop_loss: float, take_profit: float) -> Dict:
+        """
+        باز کردن معامله جدید
+        """
+        if not self.can_open_new_position():
+            return None
+        
+        position_size = self.get_position_size()
+        
+        position = {
+            'symbol': symbol,
+            'entry_price': entry_price,
+            'position_size': position_size,
+            'entry_time': datetime.now().isoformat(),
+            'stop_loss': stop_loss,
+            'take_profit': take_profit,
+            'side': 'LONG',
+            'unrealized_pnl': 0.0,
+            'status': 'open'
+        }
+        
+        # کاهش موجودی نقد
+        self._balance -= position_size
+        
+        # اضافه به موقعیت‌های باز
+        self._open_positions.append(position)
+        
+        # ذخیره وضعیت
+        self._save_state()
+        
+        logger.info(f"✅ معامله جدید باز شد:")
+        logger.info(f"   📊 {symbol} - حجم: {position_size:.2f} USDT")
+        logger.info(f"   💰 موجودی باقیمانده: {self._balance:.2f} USDT")
+        logger.info(f"   📈 تعداد معاملات باز: {len(self._open_positions)}")
+        
+        return position
+    
+    def update_position_pnl(self, symbol: str, current_price: float):
+        """
+        به‌روزرسانی سود/زیان تحقق‌نیافته یک موقعیت
+        """
+        for position in self._open_positions:
+            if position['symbol'] == symbol:
+                pnl_percent = (current_price - position['entry_price']) / position['entry_price']
+                position['unrealized_pnl'] = position['position_size'] * pnl_percent
+                
+                # به‌روزرسانی کل دارایی
+                self._total_equity = self._balance + sum(p['unrealized_pnl'] for p in self._open_positions)
+                
+                self._save_state()
+                return position['unrealized_pnl']
+        
+        return 0.0
+    
+    def close_position(self, symbol: str, exit_price: float, reason: str = "manual") -> Dict:
+        """
+        بستن معامله و ثبت سود/زیان
+        """
+        for i, position in enumerate(self._open_positions):
+            if position['symbol'] == symbol:
+                # محاسبه سود/زیان
+                pnl_percent = (exit_price - position['entry_price']) / position['entry_price']
+                realized_pnl = position['position_size'] * pnl_percent
+                
+                # به‌روزرسانی موجودی نقد
+                self._balance += position['position_size'] + realized_pnl
+                
+                # ثبت در تاریخچه
+                trade_record = {
+                    'symbol': symbol,
+                    'entry_price': position['entry_price'],
+                    'exit_price': exit_price,
+                    'position_size': position['position_size'],
+                    'realized_pnl': realized_pnl,
+                    'pnl_percent': pnl_percent * 100,
+                    'entry_time': position['entry_time'],
+                    'exit_time': datetime.now().isoformat(),
+                    'close_reason': reason,
+                    'status': 'closed'
+                }
+                self._closed_trades.append(trade_record)
+                
+                # حذف از موقعیت‌های باز
+                self._open_positions.pop(i)
+                
+                # به‌روزرسانی کل دارایی
+                self._total_equity = self._balance + sum(p['unrealized_pnl'] for p in self._open_positions)
+                
+                # ذخیره وضعیت
+                self._save_state()
+                
+                logger.info(f"✅ معامله {symbol} بسته شد:")
+                logger.info(f"   💰 سود/زیان: {realized_pnl:.2f} USDT ({pnl_percent*100:.2f}%)")
+                logger.info(f"   💳 موجودی جدید: {self._balance:.2f} USDT")
+                logger.info(f"   📊 کل دارایی: {self._total_equity:.2f} USDT")
+                
+                return trade_record
+        
+        logger.warning(f"⚠️ موقعیت {symbol} یافت نشد")
+        return None
+    
+    def get_performance_summary(self) -> Dict:
+        """گزارش خلاصه عملکرد"""
+        closed_trades = self._closed_trades
+        total_trades = len(closed_trades)
+        
+        if total_trades == 0:
+            return {
+                'total_trades': 0,
+                'win_rate': 0,
+                'total_pnl': 0,
+                'avg_pnl': 0,
+                'current_balance': self._balance,
+                'total_equity': self._total_equity
+            }
+        
+        winning_trades = [t for t in closed_trades if t['realized_pnl'] > 0]
+        losing_trades = [t for t in closed_trades if t['realized_pnl'] < 0]
+        
+        return {
+            'total_trades': total_trades,
+            'winning_trades': len(winning_trades),
+            'losing_trades': len(losing_trades),
+            'win_rate': len(winning_trades) / total_trades if total_trades > 0 else 0,
+            'total_pnl': sum(t['realized_pnl'] for t in closed_trades),
+            'avg_pnl': sum(t['realized_pnl'] for t in closed_trades) / total_trades,
+            'best_trade': max(closed_trades, key=lambda x: x['realized_pnl']) if winning_trades else None,
+            'worst_trade': min(closed_trades, key=lambda x: x['realized_pnl']) if losing_trades else None,
+            'current_balance': self._balance,
+            'total_equity': self._total_equity,
+            'open_positions': len(self._open_positions)
+        }
+    
+    def reset(self, new_balance: Optional[float] = None):
+        """بازنشانی کامل"""
+        if new_balance is None:
+            new_balance = self.initial_balance
+        
+        self._balance = new_balance
+        self._total_equity = new_balance
+        self._open_positions = []
+        self._closed_trades = []
+        self._save_state()
+        
+        logger.info(f"🔄 پورتفوی بازنشانی شد به: {new_balance:.2f} USDT")
