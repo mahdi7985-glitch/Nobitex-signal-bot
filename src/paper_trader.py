@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 from src.execution_manager import ExecutionManager
-from src.balance_manager import BalanceManager  # استفاده از نسخه جدید
+from src.balance_manager import BalanceManager
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -47,11 +47,17 @@ class PaperTrader:
     def _load_previous_state(self):
         """بارگذاری وضعیت قبلی از BalanceManager"""
         summary = self.balance_manager.get_performance_summary()
+        
+        # 🔥 استفاده از get() با مقدار پیش‌فرض
+        total_trades = summary.get('total_trades', 0)
+        winning_trades = summary.get('winning_trades', 0)
+        win_rate = summary.get('win_rate', 0) * 100
+        
         logger.info(f"📊 وضعیت قبلی:")
-        logger.info(f"   💰 موجودی: {summary['current_balance']:.2f} USDT")
-        logger.info(f"   💎 کل دارایی: {summary['total_equity']:.2f} USDT")
-        logger.info(f"   📈 معاملات: {summary['total_trades']} (برد: {summary['winning_trades']})")
-        logger.info(f"   🎯 نرخ برد: {summary['win_rate']*100:.1f}%")
+        logger.info(f"   💰 موجودی: {summary.get('current_balance', 0):.2f} USDT")
+        logger.info(f"   💎 کل دارایی: {summary.get('total_equity', 0):.2f} USDT")
+        logger.info(f"   📈 معاملات: {total_trades} (برد: {winning_trades})")
+        logger.info(f"   🎯 نرخ برد: {win_rate:.1f}%")
     
     def process_signal(self, signal: Dict[str, Any]) -> bool:
         """
@@ -67,7 +73,7 @@ class PaperTrader:
         
         # ۳. اضافه کردن حجم به سیگنال
         signal['position_size'] = position_size
-        signal['position_value'] = position_size  # برای paper trading
+        signal['position_value'] = position_size
         
         # ۴. پردازش سیگنال توسط Execution Manager
         result = self.manager.process_signal(signal)
@@ -117,7 +123,6 @@ class PaperTrader:
             current_price = prices[symbol]
             entry_price = position['entry_price']
             
-            # محاسبه درصد تغییر
             change_percent = (current_price - entry_price) / entry_price * 100
             
             # بررسی حد سود
@@ -141,7 +146,6 @@ class PaperTrader:
         trade_record = self.balance_manager.close_position(symbol, exit_price, reason)
         
         if trade_record:
-            # ۳. به‌روزرسانی آمار روزانه
             self.daily_trades += 1
             self.daily_pnl += trade_record['realized_pnl']
             
@@ -149,21 +153,19 @@ class PaperTrader:
             logger.info(f"   💰 سود/زیان: {trade_record['realized_pnl']:.2f} USDT")
     
     def get_status(self) -> Dict[str, Any]:
-        """
-        دریافت وضعیت کامل
-        """
+        """دریافت وضعیت کامل"""
         summary = self.balance_manager.get_performance_summary()
         open_positions = self.balance_manager.get_open_positions()
         
         return {
-            'balance': summary['current_balance'],
-            'total_equity': summary['total_equity'],
+            'balance': summary.get('current_balance', 0),
+            'total_equity': summary.get('total_equity', 0),
             'initial_balance': self.balance_manager.initial_balance,
-            'total_pnl': summary['total_pnl'],
-            'win_rate': summary['win_rate'],
-            'total_trades': summary['total_trades'],
-            'winning_trades': summary['winning_trades'],
-            'losing_trades': summary['losing_trades'],
+            'total_pnl': summary.get('total_pnl', 0),
+            'win_rate': summary.get('win_rate', 0),
+            'total_trades': summary.get('total_trades', 0),
+            'winning_trades': summary.get('winning_trades', 0),
+            'losing_trades': summary.get('losing_trades', 0),
             'open_positions_count': len(open_positions),
             'open_positions': open_positions,
             'is_running': self.is_running,
@@ -180,18 +182,14 @@ class PaperTrader:
         return self.balance_manager.get_total_equity()
     
     def run_continuous(self, check_interval: int = 60):
-        """
-        اجرای مداوم با بررسی خودکار
-        """
+        """اجرای مداوم با بررسی خودکار"""
         self.is_running = True
         logger.info(f"🚀 شروع Paper Trader (بررسی هر {check_interval} ثانیه)")
         
         while self.is_running:
             try:
-                # ۱. دریافت وضعیت
                 status = self.get_status()
                 
-                # ۲. نمایش خلاصه وضعیت
                 if status['open_positions_count'] > 0:
                     logger.info(
                         f"📊 موجودی: {status['balance']:.2f} USDT "
@@ -202,9 +200,6 @@ class PaperTrader:
                     logger.info(
                         f"💤 بدون معامله باز | موجودی: {status['balance']:.2f} USDT"
                     )
-                
-                # ۳. بررسی معاملات (در صورت وجود سیگنال)
-                # اینجا می‌تونید سیگنال‌های جدید رو چک کنید
                 
                 time.sleep(check_interval)
                 
@@ -229,26 +224,26 @@ class PaperTrader:
         print("📊 گزارش عملکرد Paper Trader")
         print("="*60)
         print(f"💰 سرمایه اولیه: {self.balance_manager.initial_balance:.2f} USDT")
-        print(f"💰 سرمایه فعلی: {summary['total_equity']:.2f} USDT")
-        print(f"📈 سود/زیان کل: {summary['total_pnl']:.2f} USDT")
-        print(f"📊 تعداد معاملات: {summary['total_trades']}")
-        print(f"✅ معاملات برنده: {summary['winning_trades']}")
-        print(f"❌ معاملات بازنده: {summary['losing_trades']}")
-        print(f"🎯 نرخ برد: {summary['win_rate']*100:.1f}%")
-        print(f"💵 میانگین سود: {summary['avg_pnl']:.2f} USDT")
+        print(f"💰 سرمایه فعلی: {summary.get('total_equity', 0):.2f} USDT")
+        print(f"📈 سود/زیان کل: {summary.get('total_pnl', 0):.2f} USDT")
+        print(f"📊 تعداد معاملات: {summary.get('total_trades', 0)}")
+        print(f"✅ معاملات برنده: {summary.get('winning_trades', 0)}")
+        print(f"❌ معاملات بازنده: {summary.get('losing_trades', 0)}")
+        print(f"🎯 نرخ برد: {summary.get('win_rate', 0)*100:.1f}%")
+        print(f"💵 میانگین سود: {summary.get('avg_pnl', 0):.2f} USDT")
         
-        if summary.get('best_trade'):
-            print(f"🏆 بهترین معامله: {summary['best_trade']['realized_pnl']:.2f} USDT ({summary['best_trade']['symbol']})")
-        if summary.get('worst_trade'):
-            print(f"💔 بدترین معامله: {summary['worst_trade']['realized_pnl']:.2f} USDT ({summary['worst_trade']['symbol']})")
+        best_trade = summary.get('best_trade')
+        worst_trade = summary.get('worst_trade')
+        if best_trade:
+            print(f"🏆 بهترین معامله: {best_trade['realized_pnl']:.2f} USDT ({best_trade['symbol']})")
+        if worst_trade:
+            print(f"💔 بدترین معامله: {worst_trade['realized_pnl']:.2f} USDT ({worst_trade['symbol']})")
         
-        print(f"📈 معاملات باز: {summary['open_positions']}")
+        print(f"📈 معاملات باز: {summary.get('open_positions', 0)}")
         print("="*60)
     
     def reset(self, new_balance: Optional[float] = None):
-        """
-        بازنشانی کامل ربات
-        """
+        """بازنشانی کامل ربات"""
         self.balance_manager.reset(new_balance)
         self.daily_trades = 0
         self.daily_pnl = 0.0
