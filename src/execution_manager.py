@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from src.execution_interface import ExecutionInterface
 from src.paper_executor import PaperExecutor
-from src.balance_manager import BalanceManager  # اضافه شد
+from src.balance_manager import BalanceManager
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class ExecutionManager:
         self.mode = mode
         self.executor: Optional[ExecutionInterface] = None
         
-        # 🔥 استفاده از BalanceManager جدید
+        # استفاده از BalanceManager جدید
         self.balance_manager = BalanceManager(config)
         
         self._init_executor()
@@ -35,7 +35,7 @@ class ExecutionManager:
         if self.mode == 'paper':
             self.executor = PaperExecutor(
                 config=self.config,
-                initial_balance=self.balance_manager.get_balance()  # از BalanceManager بگیر
+                initial_balance=self.balance_manager.get_balance()
             )
             logger.info(f"✅ Paper Executor initialized (Balance: {self.balance_manager.get_balance():.2f} USDT)")
         elif self.mode == 'live':
@@ -46,12 +46,6 @@ class ExecutionManager:
     def process_signal(self, signal: Dict[str, Any]) -> bool:
         """
         پردازش سیگنال و اجرای معامله با مدیریت سرمایه
-        
-        Args:
-            signal: سیگنال کامل از SignalEngine
-        
-        Returns:
-            True در صورت موفقیت
         """
         if not signal or not self.executor:
             return False
@@ -66,53 +60,55 @@ class ExecutionManager:
         take_profit = signal.get('tp1_raw')
         
         # ================================================
-        # 🔥 اصلاح: محاسبه پویای حجم معامله
+        # بررسی امکان ورود به معامله
         # ================================================
-        
-        # ۱. بررسی امکان ورود به معامله
         if not self.balance_manager.can_open_new_position():
             logger.warning(f"⛔ امکان ورود به معامله {symbol} وجود ندارد")
             return False
         
-        # ۲. محاسبه حجم معامله بر اساس دارایی
-        position_size = self.balance_manager.get_position_size()
-        
-        # ۳. تنظیم حداقل و حداکثر حجم (برای امنیت)
-        min_size = 0.01  # حداقل حجم
-        max_size = 1.0   # حداکثر حجم
-        
-        if position_size < min_size:
-            logger.warning(f"⚠️ حجم معامله خیلی کم است: {position_size:.4f} (حداقل: {min_size})")
-            position_size = min_size
-        elif position_size > max_size:
-            logger.warning(f"⚠️ حجم معامله خیلی زیاد است: {position_size:.4f} (حداکثر: {max_size})")
-            position_size = max_size
-        
-        # ۴. بررسی موجودی کافی
-        if not self.executor.has_sufficient_balance(position_size):
-            logger.error(f"❌ موجودی کافی برای معامله {symbol} وجود ندارد")
-            return False
+        # ================================================
+        # محاسبه حجم معامله بر اساس دارایی (به USDT)
+        # ================================================
+        position_size_usdt = self.balance_manager.get_position_size()
         
         # ================================================
-        # اجرای معامله با حجم محاسبه شده
+        # تبدیل حجم به تعداد کوین
         # ================================================
+        if price and price > 0:
+            position_size_coins = position_size_usdt / price
+        else:
+            position_size_coins = 0.01
         
+        # محدود کردن حجم برای PaperExecutor
+        min_size = 0.0001
+        max_size = 100.0
+        
+        if position_size_coins < min_size:
+            position_size_coins = min_size
+            logger.debug(f"حجم به حداقل رسید: {min_size}")
+        elif position_size_coins > max_size:
+            position_size_coins = max_size
+            logger.debug(f"حجم به حداکثر رسید: {max_size}")
+        
+        # ================================================
+        # اجرای معامله با حجم محاسبه شده (به تعداد کوین)
+        # ================================================
         if action == 'BUY':
             result = self.executor.execute_buy(
                 symbol=symbol,
                 price=price,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
-                size=position_size,  # 🔥 حجم پویا
+                size=position_size_coins,
                 signal_data=signal
             )
-        else:  # SELL
+        else:
             result = self.executor.execute_sell(
                 symbol=symbol,
                 price=price,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
-                size=position_size,  # 🔥 حجم پویا
+                size=position_size_coins,
                 signal_data=signal
             )
         
@@ -120,7 +116,6 @@ class ExecutionManager:
         # ثبت معامله در BalanceManager
         # ================================================
         if result:
-            # ثبت موقعیت باز در BalanceManager
             position = self.balance_manager.open_position(
                 symbol=symbol,
                 entry_price=price,
@@ -129,7 +124,7 @@ class ExecutionManager:
             )
             
             if position:
-                logger.info(f"✅ معامله {symbol} با حجم {position_size:.4f} ثبت شد")
+                logger.info(f"✅ معامله {symbol} با حجم {position_size_coins:.4f} کوین ({position_size_usdt:.2f} USDT) ثبت شد")
                 return True
             else:
                 logger.error(f"❌ ثبت معامله در BalanceManager ناموفق بود")
@@ -138,31 +133,23 @@ class ExecutionManager:
         return False
     
     def update_prices(self, prices: Dict[str, float]):
-        """
-        به‌روزرسانی قیمت‌ها و بررسی خودکار بسته‌شدن
-        🔥 هماهنگ با BalanceManager
-        """
+        """به‌روزرسانی قیمت‌ها و بررسی خودکار بسته‌شدن"""
         if not self.executor or self.mode != 'paper':
             return
         
-        # ۱. به‌روزرسانی در PaperExecutor
         if isinstance(self.executor, PaperExecutor):
             for symbol, price in prices.items():
                 self.executor.update_price(symbol, price)
         
-        # ۲. به‌روزرسانی سود/زیان در BalanceManager
         for symbol, price in prices.items():
             pnl = self.balance_manager.update_position_pnl(symbol, price)
             if pnl is not None and abs(pnl) > 0.01:
                 logger.debug(f"📊 {symbol}: P&L = {pnl:.2f} USDT")
         
-        # ۳. بررسی خودکار برای بستن معاملات
         self._check_and_close_positions(prices)
     
     def _check_and_close_positions(self, prices: Dict[str, float]):
-        """
-        بررسی موقعیت‌های باز و بستن خودکار در صورت رسیدن به هدف
-        """
+        """بررسی موقعیت‌های باز و بستن خودکار"""
         open_positions = self.balance_manager.get_open_positions()
         
         for position in open_positions:
@@ -175,37 +162,21 @@ class ExecutionManager:
             stop_loss = position.get('stop_loss')
             take_profit = position.get('take_profit')
             
-            # بررسی حد ضرر
             if stop_loss and current_price <= stop_loss:
                 logger.info(f"🛑 حد ضرر {symbol}: {current_price:.2f} <= {stop_loss:.2f}")
                 self.close_position(symbol, current_price, "stop_loss")
                 continue
             
-            # بررسی حد سود
             if take_profit and current_price >= take_profit:
                 logger.info(f"🎯 حد سود {symbol}: {current_price:.2f} >= {take_profit:.2f}")
                 self.close_position(symbol, current_price, "take_profit")
                 continue
-            
-            # بررسی درصدی (اختیاری)
-            change_percent = (current_price - entry_price) / entry_price * 100
-            
-            # اگر ۱۵٪ سود کرده بود، حد سود رو به‌روز کن (Trailing Stop)
-            if change_percent > 10 and position.get('trailing_activated', False) == False:
-                logger.info(f"📈 {symbol}: {change_percent:.1f}% سود - فعال‌سازی Trailing Stop")
-                # می‌تونید اینجا حد ضرر رو به‌روز کنید
-                position['trailing_activated'] = True
-                position['trailing_stop'] = current_price * 0.95  # ۵٪ پایین‌تر
     
     def close_position(self, symbol: str, exit_price: float, reason: str = "manual"):
-        """
-        بستن معامله و هماهنگ‌سازی با BalanceManager
-        """
-        # ۱. بستن در PaperExecutor
+        """بستن معامله و هماهنگ‌سازی با BalanceManager"""
         if isinstance(self.executor, PaperExecutor):
             self.executor.close_position(symbol, exit_price)
         
-        # ۲. بستن در BalanceManager
         trade_record = self.balance_manager.close_position(symbol, exit_price, reason)
         
         if trade_record:
@@ -217,31 +188,23 @@ class ExecutionManager:
         return None
     
     def get_balance(self) -> float:
-        """
-        دریافت موجودی از BalanceManager
-        🔥 اصلاح: دیگر از PaperExecutor نمی‌گیریم
-        """
         return self.balance_manager.get_balance()
     
     def get_total_equity(self) -> float:
-        """دریافت کل دارایی"""
         return self.balance_manager.get_total_equity()
     
     def get_positions(self) -> Dict[str, Dict[str, Any]]:
-        """دریافت موقعیت‌های باز"""
         if not self.executor:
             return {}
         return self.executor.get_all_positions()
     
     def get_status(self) -> Dict[str, Any]:
-        """دریافت وضعیت کامل"""
         if not self.executor:
             return {
                 'mode': self.mode,
                 'status': 'NOT_INITIALIZED'
             }
         
-        # 🔥 دریافت وضعیت از BalanceManager
         performance_summary = self.balance_manager.get_performance_summary()
         open_positions = self.balance_manager.get_open_positions()
         
@@ -256,7 +219,6 @@ class ExecutionManager:
         }
     
     def switch_mode(self, mode: str):
-        """تغییر حالت"""
         if mode == self.mode:
             return
         
@@ -265,7 +227,6 @@ class ExecutionManager:
         logger.info(f"🔄 Switched to {mode} mode")
     
     def reset(self, new_balance: Optional[float] = None):
-        """بازنشانی کامل"""
         self.balance_manager.reset(new_balance)
         if isinstance(self.executor, PaperExecutor):
             self.executor.reset_balance(self.balance_manager.get_balance())
