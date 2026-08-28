@@ -45,7 +45,7 @@ class ExecutionManager:
     
     def process_signal(self, signal: Dict[str, Any]) -> bool:
         """
-        پردازش سیگنال و اجرای معامله با مدیریت سرمایه
+        پردازش سیگنال و اجرای معامله با مدیریت سرمایه (بر اساس USDT)
         """
         if not signal or not self.executor:
             return False
@@ -67,31 +67,12 @@ class ExecutionManager:
             return False
         
         # ================================================
-        # محاسبه حجم معامله بر اساس دارایی (به USDT)
+        # 🔥 حجم معامله به USDT (مبنا)
         # ================================================
         position_size_usdt = self.balance_manager.get_position_size()
         
         # ================================================
-        # تبدیل حجم به تعداد کوین
-        # ================================================
-        if price and price > 0:
-            position_size_coins = position_size_usdt / price
-        else:
-            position_size_coins = 0.01
-        
-        # محدود کردن حجم برای PaperExecutor
-        min_size = 0.0001
-        max_size = 100.0
-        
-        if position_size_coins < min_size:
-            position_size_coins = min_size
-            logger.debug(f"حجم به حداقل رسید: {min_size}")
-        elif position_size_coins > max_size:
-            position_size_coins = max_size
-            logger.debug(f"حجم به حداکثر رسید: {max_size}")
-        
-        # ================================================
-        # اجرای معامله با حجم محاسبه شده (به تعداد کوین)
+        # 🔥 ارسال حجم به USDT به PaperExecutor
         # ================================================
         if action == 'BUY':
             result = self.executor.execute_buy(
@@ -99,7 +80,7 @@ class ExecutionManager:
                 price=price,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
-                size=position_size_coins,
+                size=position_size_usdt,  # 🔥 USDT
                 signal_data=signal
             )
         else:
@@ -108,12 +89,12 @@ class ExecutionManager:
                 price=price,
                 stop_loss=stop_loss,
                 take_profit=take_profit,
-                size=position_size_coins,
+                size=position_size_usdt,  # 🔥 USDT
                 signal_data=signal
             )
         
         # ================================================
-        # ثبت معامله در BalanceManager
+        # ثبت معامله در BalanceManager (به USDT)
         # ================================================
         if result:
             position = self.balance_manager.open_position(
@@ -124,7 +105,7 @@ class ExecutionManager:
             )
             
             if position:
-                logger.info(f"✅ معامله {symbol} با حجم {position_size_coins:.4f} کوین ({position_size_usdt:.2f} USDT) ثبت شد")
+                logger.info(f"✅ معامله {symbol} با حجم {position_size_usdt:.2f} USDT ثبت شد")
                 return True
             else:
                 logger.error(f"❌ ثبت معامله در BalanceManager ناموفق بود")
@@ -158,7 +139,6 @@ class ExecutionManager:
                 continue
             
             current_price = prices[symbol]
-            entry_price = position['entry_price']
             stop_loss = position.get('stop_loss')
             take_profit = position.get('take_profit')
             
