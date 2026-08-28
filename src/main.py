@@ -17,7 +17,7 @@ from src.ai_analyzer import AIAnalyzer
 from src.bale_bot import BaleBot
 from src.formatter import MessageFormatter
 from src.performance_tracker import PerformanceTracker
-from src.paper_trader import PaperTrader  # <-- اصلاح شده
+from src.paper_trader import PaperTrader
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +42,13 @@ class CryptoSignalBot:
         self.performance_tracker = PerformanceTracker(config)
         
         # =========================
-        # راه‌اندازی Paper Trader (اضافه شده)
+        # راه‌اندازی Paper Trader (با پشتیبانی از ذخیره‌سازی)
         # =========================
         self.paper_trader = PaperTrader(config)
-        logger.info("✅ Paper Trader initialized with 530 USDT")
+        
+        # گرفتن موجودی اولیه از BalanceManager
+        initial_balance = self.paper_trader.get_balance()
+        logger.info(f"✅ Paper Trader initialized with {initial_balance:.2f} USDT")
         
         # =========================
         # وضعیت ربات
@@ -106,7 +109,7 @@ class CryptoSignalBot:
                 return False
             
             # ================================================
-            # به‌روزرسانی قیمت‌ها در Paper Trader (اضافه شده)
+            # به‌روزرسانی قیمت‌ها در Paper Trader
             # ================================================
             current_prices = {}
             for symbol, data in market_data.items():
@@ -169,7 +172,7 @@ class CryptoSignalBot:
             top_signals = self.signal_engine.get_top_opportunities(all_results, limit=5)
             
             # ================================================
-            # پردازش سیگنال‌ها توسط Paper Trader (اضافه شده)
+            # پردازش سیگنال‌ها توسط Paper Trader
             # ================================================
             for signal in top_signals:
                 if signal.get('signal') in ['BUY', 'SELL']:
@@ -200,7 +203,6 @@ class CryptoSignalBot:
             # ذخیره سیگنال‌ها در Performance Tracker
             # ================================================
             if all_results:
-                # اطمینان از وجود indicator_scores در همه سیگنال‌ها
                 for result in all_results:
                     if 'indicator_scores' not in result:
                         result['indicator_scores'] = self._extract_indicator_scores(result)
@@ -222,14 +224,17 @@ class CryptoSignalBot:
             logger.info("=" * 50)
             
             # ================================================
-            # گزارش وضعیت Paper Trader (اضافه شده)
+            # 🔥 گزارش وضعیت Paper Trader (اصلاح شده)
             # ================================================
             if signals_to_send:
                 status = self.paper_trader.get_status()
+                total_pnl = status['total_pnl']
                 logger.info(
                     f"💰 Paper Balance: {status['balance']:.2f} USDT "
+                    f"| Total Equity: {status['total_equity']:.2f} USDT "
                     f"| Open: {status['open_positions_count']} "
-                    f"| P/L: {status['balance'] - 530:.2f} USDT"
+                    f"| P/L: {total_pnl:+.2f} USDT "
+                    f"| Win Rate: {status['win_rate']*100:.1f}%"
                 )
             
             self.last_run_time = datetime.now()
@@ -242,16 +247,9 @@ class CryptoSignalBot:
             return False
     
     def _fetch_market_data(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
-        """
-        دریافت داده بازار برای همه ارزها
-        
-        با دریافت OHLCV و سپس قیمت به صورت تکی (به جای Batch)
-        """
+        """دریافت داده بازار برای همه ارزها"""
         market_data = {}
         
-        # =========================
-        # مرحله 1: دریافت OHLCV
-        # =========================
         for symbol in symbols:
             try:
                 df = self.data_fetcher.get_ohlcv(
@@ -280,9 +278,6 @@ class CryptoSignalBot:
             logger.warning("⚠️ No market data available after OHLCV fetch")
             return {}
         
-        # =========================
-        # مرحله 2: دریافت قیمت‌ها (تکی)
-        # =========================
         symbols_with_data = list(market_data.keys())
         for symbol in symbols_with_data:
             try:
@@ -423,26 +418,51 @@ class CryptoSignalBot:
                 self.running = False
                 
                 # ================================================
-                # گزارش نهایی Paper Trader (اضافه شده)
+                # 🔥 گزارش نهایی Paper Trader (اصلاح شده)
                 # ================================================
-                status = self.paper_trader.get_status()
-                logger.info("=" * 50)
-                logger.info("📊 FINAL PAPER TRADING REPORT")
-                logger.info(f"   Initial Balance: 530.00 USDT")
-                logger.info(f"   Final Balance:   {status['balance']:.2f} USDT")
-                logger.info(f"   Total P/L:       {status['balance'] - 530:.2f} USDT")
-                logger.info(f"   P/L Percent:     {((status['balance'] / 530) - 1) * 100:.2f}%")
-                logger.info(f"   Open Positions:  {status['open_positions_count']}")
-                logger.info("=" * 50)
+                self._show_final_report()
                 break
             except Exception as e:
                 logger.error(f"❌ Critical error: {e}")
                 time.sleep(60)
     
+    def _show_final_report(self):
+        """نمایش گزارش نهایی با استفاده از متد show_performance"""
+        logger.info("=" * 60)
+        logger.info("📊 FINAL PAPER TRADING REPORT")
+        logger.info("=" * 60)
+        
+        # 🔥 استفاده از متد show_performance جدید
+        self.paper_trader.show_performance()
+        
+        # همچنین نمایش خلاصه در لاگ
+        status = self.paper_trader.get_status()
+        total_pnl = status['total_pnl']
+        win_rate = status.get('win_rate', 0) * 100
+        
+        logger.info("=" * 60)
+        logger.info("📈 SUMMARY:")
+        logger.info(f"   Total Trades:  {status['total_trades']}")
+        logger.info(f"   Win Rate:      {win_rate:.1f}%")
+        logger.info(f"   Total P/L:     {total_pnl:+.2f} USDT")
+        logger.info(f"   Open Positions: {status['open_positions_count']}")
+        logger.info("=" * 60)
+        
+        # 🎯 نمایش توصیه برای ادامه یا تغییر
+        if total_pnl > 0:
+            logger.info("✅ ربات عملکرد مثبت داشته است. ادامه دهید.")
+        elif total_pnl < -50:
+            logger.info("⚠️ ربات ضرر قابل توجهی داشته. نیاز به بررسی استراتژی دارد.")
+        else:
+            logger.info("📊 ربات عملکرد متعادلی داشته. ادامه دهید و monitor کنید.")
+    
     def stop(self):
         """متوقف کردن ربات"""
         self.running = False
         logger.info("🛑 Bot stopped")
+        
+        # نمایش گزارش نهایی
+        self._show_final_report()
 
 
 def main():
@@ -453,6 +473,8 @@ def main():
         
         if len(sys.argv) > 1 and sys.argv[1] == '--once':
             bot.run_once()
+            # نمایش گزارش بعد از یک بار اجرا
+            bot._show_final_report()
         else:
             bot.run_forever()
             
