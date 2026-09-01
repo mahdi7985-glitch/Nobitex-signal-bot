@@ -231,6 +231,29 @@ class CryptoSignalBot:
             top_signals = self.signal_engine.get_top_opportunities(all_results, limit=10)
             
             # ================================================
+            # 🔥 دریافت تحلیل AI برای سیگنال‌های برتر
+            # ================================================
+            ai_results = {}
+            if self.config.ENABLE_AI_ANALYSIS and top_signals:
+                for signal in top_signals[:5]:  # فقط ۵ تا سیگنال برتر
+                    ai_result = self.ai_analyzer.analyze(
+                        signal_data=signal,
+                        news_summary=news_summary,
+                        news_sentiment=news_sentiment,
+                        market_regime=market_regime
+                    )
+                    ai_results[signal.get('symbol')] = ai_result
+                    
+                    # ================================================
+                    # 🔥 ذخیره اطلاعات AI در signal_data
+                    # ================================================
+                    signal['ai_signal'] = ai_result.get('signal', 'NEUTRAL')
+                    signal['ai_confidence'] = ai_result.get('confidence', 0)
+                    signal['ai_summary'] = ai_result.get('summary', '')
+                    
+                    time.sleep(0.3)
+            
+            # ================================================
             # 🔥 باز کردن پوزیشن‌های جدید (تا ۵ تا)
             # ================================================
             opened_count = 0
@@ -263,14 +286,16 @@ class CryptoSignalBot:
                         logger.info(f"⏸️ ظرفیت پوزیشن‌ها پر شده ({MAX_POSITIONS})، توقف")
                         break
                     
-                    # باز کردن پوزیشن
+                    # ================================================
+                    # 🔥 باز کردن پوزیشن با اطلاعات AI
+                    # ================================================
                     state = open_position(
                         state,
                         symbol=symbol,
                         price=price,
                         stop_loss=stop_loss,
                         take_profit=take_profit,
-                        signal_data=signal
+                        signal_data=signal  # 🔥 شامل اطلاعات AI هست
                     )
                     
                     if state.get("positions") and len(state["positions"]) > opened_count:
@@ -278,6 +303,10 @@ class CryptoSignalBot:
                         save_state(state)
                         
                         # ارسال پیام باز شدن
+                        ai_info = ""
+                        if signal.get('ai_signal'):
+                            ai_info = f"\n🤖 AI: {signal.get('ai_signal')} (اطمینان: {signal.get('ai_confidence')}%)"
+                        
                         self.bale_bot.send_message(
                             f"🟢 پوزیشن جدید باز شد! ({opened_count}/{MAX_POSITIONS})\n"
                             f"📊 {symbol}\n"
@@ -285,6 +314,7 @@ class CryptoSignalBot:
                             f"🛑 حد ضرر: {stop_loss:.4f}\n"
                             f"🎯 حد سود: {take_profit:.4f}\n"
                             f"💰 موجودی: {state['balance']:.2f} USDT"
+                            f"{ai_info}"
                         )
                         logger.info(f"✅ پوزیشن جدید باز شد: {symbol} @ {price:.4f}")
             
@@ -302,18 +332,6 @@ class CryptoSignalBot:
                     signals_to_send.append(signal)
             
             logger.info(f"📤 {len(signals_to_send)} signals to send out of {len(top_signals)} top signals")
-            
-            ai_results = {}
-            if self.config.ENABLE_AI_ANALYSIS and signals_to_send:
-                for signal in signals_to_send:
-                    ai_result = self.ai_analyzer.analyze(
-                        signal_data=signal,
-                        news_summary=news_summary,
-                        news_sentiment=news_sentiment,
-                        market_regime=market_regime
-                    )
-                    ai_results[signal.get('symbol')] = ai_result
-                    time.sleep(0.3)
             
             self._send_messages(all_results, signals_to_send, ai_results)
             
