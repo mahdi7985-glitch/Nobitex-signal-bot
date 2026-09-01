@@ -5,6 +5,10 @@ on:
     - cron: '*/5 * * * *'
   workflow_dispatch:
 
+# 🔥 اضافه کردن دسترسی نوشتن
+permissions:
+  contents: write
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
@@ -18,6 +22,9 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+        # 🔥 اضافه کردن token
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -47,22 +54,22 @@ jobs:
           python run.py --once
 
       # ================================================
-      # 🔥 مرحله جدید: ذخیره وضعیت در ریپو
+      # 🔥 مرحله ذخیره وضعیت در ریپو (اصلاح شده)
       # ================================================
       - name: Commit updated state
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # اضافه کردن فایل‌های وضعیت
-          git add state.json || true
-          git add src/data/portfolio_state.json || true
-          git add src/data/trades_history.json || true
+          # 🔥 اضافه کردن فایل‌های وضعیت (با -f برای override .gitignore)
+          git add -f state.json 2>/dev/null || true
+          git add -f src/data/portfolio_state.json 2>/dev/null || true
+          git add -f src/data/trades_history.json 2>/dev/null || true
           
           # کامیت کردن اگه تغییری وجود داشته باشه
           git diff --staged --quiet || git commit -m "update trade state [skip ci]"
           
-          # push به ریپو
+          # 🔥 push به ریپو
           git push
 
       - name: Upload logs
