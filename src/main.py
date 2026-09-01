@@ -172,11 +172,21 @@ class CryptoSignalBot:
             top_signals = self.signal_engine.get_top_opportunities(all_results, limit=5)
             
             # ================================================
-            # پردازش سیگنال‌ها توسط Paper Trader
+            # 🔥 پردازش سیگنال‌ها توسط Paper Trader (با محدودیت)
             # ================================================
+            processed_count = 0
             for signal in top_signals:
                 if signal.get('signal') in ['BUY', 'SELL']:
-                    self.paper_trader.process_signal(signal)
+                    # 🔥 بررسی کنید که هنوز ظرفیت برای معامله جدید وجود داره
+                    if self.paper_trader.balance_manager.can_open_new_position():
+                        result = self.paper_trader.process_signal(signal)
+                        if result:
+                            processed_count += 1
+                    else:
+                        logger.info(f"⏸️ ظرفیت معاملات پر شده، رد سیگنال {signal.get('symbol')}")
+                        break
+            
+            logger.info(f"📊 {processed_count} signals processed for trading")
             
             signals_to_send = []
             for signal in top_signals:
@@ -224,18 +234,23 @@ class CryptoSignalBot:
             logger.info("=" * 50)
             
             # ================================================
-            # 🔥 گزارش وضعیت Paper Trader (اصلاح شده)
+            # 🔥 گزارش وضعیت Paper Trader (با اطلاعات کامل)
             # ================================================
-            if signals_to_send:
-                status = self.paper_trader.get_status()
-                total_pnl = status['total_pnl']
-                logger.info(
-                    f"💰 Paper Balance: {status['balance']:.2f} USDT "
-                    f"| Total Equity: {status['total_equity']:.2f} USDT "
-                    f"| Open: {status['open_positions_count']} "
-                    f"| P/L: {total_pnl:+.2f} USDT "
-                    f"| Win Rate: {status['win_rate']*100:.1f}%"
-                )
+            status = self.paper_trader.get_status()
+            total_pnl = status.get('total_pnl', 0)
+            win_rate = status.get('win_rate', 0) * 100
+            open_count = status.get('open_positions_count', 0)
+            balance = status.get('balance', 0)
+            equity = status.get('total_equity', 0)
+            
+            logger.info(
+                f"💰 Balance: {balance:.2f} USDT "
+                f"| Equity: {equity:.2f} USDT "
+                f"| Open: {open_count} "
+                f"| P/L: {total_pnl:+.2f} USDT "
+                f"| Win Rate: {win_rate:.1f}% "
+                f"| Trades: {status.get('total_trades', 0)}"
+            )
             
             self.last_run_time = datetime.now()
             return True
@@ -418,7 +433,7 @@ class CryptoSignalBot:
                 self.running = False
                 
                 # ================================================
-                # 🔥 گزارش نهایی Paper Trader (اصلاح شده)
+                # 🔥 گزارش نهایی Paper Trader
                 # ================================================
                 self._show_final_report()
                 break
@@ -437,15 +452,17 @@ class CryptoSignalBot:
         
         # همچنین نمایش خلاصه در لاگ
         status = self.paper_trader.get_status()
-        total_pnl = status['total_pnl']
+        total_pnl = status.get('total_pnl', 0)
         win_rate = status.get('win_rate', 0) * 100
+        total_trades = status.get('total_trades', 0)
+        open_count = status.get('open_positions_count', 0)
         
         logger.info("=" * 60)
         logger.info("📈 SUMMARY:")
-        logger.info(f"   Total Trades:  {status['total_trades']}")
+        logger.info(f"   Total Trades:  {total_trades}")
         logger.info(f"   Win Rate:      {win_rate:.1f}%")
         logger.info(f"   Total P/L:     {total_pnl:+.2f} USDT")
-        logger.info(f"   Open Positions: {status['open_positions_count']}")
+        logger.info(f"   Open Positions: {open_count}")
         logger.info("=" * 60)
         
         # 🎯 نمایش توصیه برای ادامه یا تغییر
