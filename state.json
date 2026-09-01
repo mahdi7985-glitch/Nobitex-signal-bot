@@ -1,0 +1,14 @@
+{
+  "in_position": true,
+  "symbol": "APT",
+  "entry_price": 0.5478,
+  "position_size": 106.0,
+  "stop_loss": 0.5428798961530176,
+  "take_profit": 0.556000173078304,
+  "entry_time": "2026-09-01T12:47:21.449670",
+  "history": [],
+  "total_pnl": 0.0,
+  "balance": 424.0,
+  "initial_balance": 530.0,
+  "updated_at": "2026-09-01T12:47:41.843661"
+}
