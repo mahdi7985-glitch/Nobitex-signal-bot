@@ -20,9 +20,11 @@ from src.performance_tracker import PerformanceTracker
 from src.paper_trader import PaperTrader
 from src.state_manager import (
     load_state, save_state, open_position,
-    close_position, check_exit_conditions,
+    close_position, check_all_positions,
     get_total_pnl, get_performance_summary,
-    get_position_info, update_unrealized_pnl
+    get_position_info, update_unrealized_pnl,
+    can_open_new_position, is_symbol_in_positions,
+    MAX_POSITIONS
 )
 
 logger = logging.getLogger(__name__)
@@ -131,51 +133,43 @@ class CryptoSignalBot:
                 self.paper_trader.update_prices(current_prices)
             
             # ================================================
-            # 🔥 بررسی وضعیت پوزیشن باز
+            # 🔥 بررسی همه پوزیشن‌های باز
             # ================================================
-            if state.get("in_position", False):
-                symbol = state.get("symbol")
-                entry_price = state.get("entry_price")
+            positions = state.get("positions", [])
+            
+            if positions:
+                # به‌روزرسانی سود/زیان تحقق‌نیافته
+                state = update_unrealized_pnl(state, current_prices)
                 
-                if symbol and symbol in current_prices:
-                    current_price = current_prices[symbol]
+                # بررسی شرایط خروج برای همه پوزیشن‌ها
+                to_close = check_all_positions(state, current_prices)
+                
+                for item in to_close:
+                    position = item["position"]
+                    position_id = item.get("position_id") or position.get("id")
+                    exit_price = item["exit_price"]
+                    reason = item["reason"]
                     
-                    # به‌روزرسانی سود/زیان تحقق‌نیافته
-                    state = update_unrealized_pnl(state, current_price)
+                    # بستن پوزیشن
+                    state = close_position(state, position_id, exit_price, reason)
+                    save_state(state)
                     
-                    # بررسی شرایط خروج (حد سود/ضرر)
-                    should_close, reason = check_exit_conditions(state, current_price)
-                    
-                    if should_close:
-                        # بستن پوزیشن
-                        state = close_position(state, current_price, reason)
-                        save_state(state)
-                        
-                        # ارسال پیام بسته شدن
-                        pnl = get_total_pnl(state)
-                        self.bale_bot.send_message(
-                            f"🔴 پوزیشن بسته شد! ({reason})\n"
-                            f"📊 {symbol}\n"
-                            f"💰 سود/زیان: {pnl:+.2f} USDT"
-                        )
-                        logger.info(f"✅ پوزیشن {symbol} بسته شد: {reason}")
-                    else:
-                        # پوزیشن همچنان باز است
-                        unrealized_pnl = state.get("unrealized_pnl", 0)
-                        logger.info(f"⏳ پوزیشن باز است: {symbol} @ {entry_price:.4f}")
-                        logger.info(f"   📊 قیمت فعلی: {current_price:.4f}")
-                        logger.info(f"   💰 سود/زیان تحقق‌نیافته: {unrealized_pnl:+.2f} USDT")
-                        
-                        # ارسال پیام وضعیت (هر چند اجرا یکبار)
-                        self.bale_bot.send_message(
-                            f"⏳ پوزیشن باز است\n"
-                            f"📊 {symbol}\n"
-                            f"💰 قیمت ورود: {entry_price:.4f}\n"
-                            f"📊 قیمت فعلی: {current_price:.4f}\n"
-                            f"💸 سود/زیان: {unrealized_pnl:+.2f} USDT"
-                        )
-                else:
-                    logger.warning(f"⚠️ قیمت {symbol} در دسترس نیست")
+                    # ارسال پیام بسته شدن
+                    symbol = position["symbol"]
+                    self.bale_bot.send_message(
+                        f"🔴 پوزیشن بسته شد! ({reason})\n"
+                        f"📊 {symbol}\n"
+                        f"💰 سود/زیان: {position.get('unrealized_pnl', 0):+.2f} USDT"
+                    )
+                    logger.info(f"✅ پوزیشن {symbol} بسته شد: {reason}")
+                
+                # گزارش پوزیشن‌های باز باقیمانده
+                remaining = state.get("positions", [])
+                if remaining:
+                    logger.info(f"⏳ {len(remaining)} پوزیشن باز:")
+                    for pos in remaining:
+                        pnl = pos.get("unrealized_pnl", 0)
+                        logger.info(f"   📊 {pos['symbol']} @ {pos['entry_price']:.4f} | PnL: {pnl:+.2f} USDT")
             else:
                 logger.info("📭 پوزیشنی باز نیست")
             
@@ -234,67 +228,76 @@ class CryptoSignalBot:
             market_regime = self._detect_market_regime(all_results)
             logger.info(f"📈 Market regime: {market_regime}")
             
-            top_signals = self.signal_engine.get_top_opportunities(all_results, limit=5)
+            top_signals = self.signal_engine.get_top_opportunities(all_results, limit=10)
             
             # ================================================
-            # 🔥 باز کردن پوزیشن جدید (فقط اگر پوزیشنی باز نیست)
+            # 🔥 باز کردن پوزیشن‌های جدید (تا ۵ تا)
             # ================================================
-            if not state.get("in_position", False):
-                for signal in top_signals:
-                    if signal.get('signal') == 'BUY':
-                        symbol = signal.get('symbol')
-                        price = signal.get('price')
-                        stop_loss = signal.get('stop_loss_raw')
-                        take_profit = signal.get('tp1_raw')
+            opened_count = 0
+            for signal in top_signals:
+                if signal.get('signal') == 'BUY':
+                    symbol = signal.get('symbol')
+                    
+                    # 🔥 بررسی: آیا این نماد قبلاً باز شده؟
+                    if is_symbol_in_positions(state, symbol):
+                        logger.info(f"⏭️ {symbol} در حال حاضر در پوزیشن باز است، رد شد")
+                        continue
+                    
+                    price = signal.get('price')
+                    stop_loss = signal.get('stop_loss_raw')
+                    take_profit = signal.get('tp1_raw')
+                    
+                    # بررسی معتبر بودن حد سود/ضرر
+                    if not stop_loss or not take_profit or stop_loss >= take_profit:
+                        logger.warning(f"⚠️ حد سود/ضرر نامعتبر برای {symbol}")
+                        continue
+                    
+                    # بررسی RR
+                    rr = signal.get('risk_reward', 0)
+                    if rr < self.config.MIN_ACCEPTABLE_RR:
+                        logger.info(f"⏭️ {symbol}: RR={rr:.2f} < {self.config.MIN_ACCEPTABLE_RR}")
+                        continue
+                    
+                    # بررسی ظرفیت برای پوزیشن جدید
+                    if not can_open_new_position(state):
+                        logger.info(f"⏸️ ظرفیت پوزیشن‌ها پر شده ({MAX_POSITIONS})، توقف")
+                        break
+                    
+                    # باز کردن پوزیشن
+                    state = open_position(
+                        state,
+                        symbol=symbol,
+                        price=price,
+                        stop_loss=stop_loss,
+                        take_profit=take_profit,
+                        signal_data=signal
+                    )
+                    
+                    if state.get("positions") and len(state["positions"]) > opened_count:
+                        opened_count += 1
+                        save_state(state)
                         
-                        # بررسی معتبر بودن حد سود/ضرر
-                        if not stop_loss or not take_profit or stop_loss >= take_profit:
-                            logger.warning(f"⚠️ حد سود/ضرر نامعتبر برای {symbol}")
-                            continue
-                        
-                        # بررسی RR
-                        rr = signal.get('risk_reward', 0)
-                        if rr < self.config.MIN_ACCEPTABLE_RR:
-                            logger.info(f"⏭️ {symbol}: RR={rr:.2f} < {self.config.MIN_ACCEPTABLE_RR}")
-                            continue
-                        
-                        # محاسبه حجم معامله (۲۰٪ از موجودی)
-                        balance = state.get("balance", 530.0)
-                        position_size = min(balance * 0.2, 106.0)  # حداکثر ۱۰۶ USDT
-                        
-                        # باز کردن پوزیشن
-                        state = open_position(
-                            state,
-                            symbol=symbol,
-                            price=price,
-                            amount=position_size,
-                            stop_loss=stop_loss,
-                            take_profit=take_profit
+                        # ارسال پیام باز شدن
+                        self.bale_bot.send_message(
+                            f"🟢 پوزیشن جدید باز شد! ({opened_count}/{MAX_POSITIONS})\n"
+                            f"📊 {symbol}\n"
+                            f"💰 قیمت ورود: {price:.4f}\n"
+                            f"🛑 حد ضرر: {stop_loss:.4f}\n"
+                            f"🎯 حد سود: {take_profit:.4f}\n"
+                            f"💰 موجودی: {state['balance']:.2f} USDT"
                         )
-                        
-                        if state.get("in_position", False):
-                            save_state(state)
-                            
-                            # ارسال پیام باز شدن
-                            self.bale_bot.send_message(
-                                f"🟢 پوزیشن باز شد!\n"
-                                f"📊 {symbol}\n"
-                                f"💰 قیمت ورود: {price:.4f}\n"
-                                f"🛑 حد ضرر: {stop_loss:.4f}\n"
-                                f"🎯 حد سود: {take_profit:.4f}\n"
-                                f"💵 حجم: {position_size:.2f} USDT\n"
-                                f"💰 موجودی: {state['balance']:.2f} USDT"
-                            )
-                            logger.info(f"✅ پوزیشن جدید باز شد: {symbol} @ {price:.4f}")
-                            break
-            else:
-                logger.info("⏸️ پوزیشن باز است، منتظر بسته شدن برای سیگنال جدید...")
+                        logger.info(f"✅ پوزیشن جدید باز شد: {symbol} @ {price:.4f}")
+            
+            if opened_count == 0 and len(state.get("positions", [])) < MAX_POSITIONS:
+                logger.info("📭 هیچ سیگنال مناسبی برای باز کردن پوزیشن جدید یافت نشد")
+            elif opened_count > 0:
+                logger.info(f"✅ {opened_count} پوزیشن جدید باز شد")
             
             # ================================================
             # ارسال سیگنال‌ها (بدون اجرای معامله)
             # ================================================
             signals_to_send = []
-            for signal in top_signals:
+            for signal in top_signals[:5]:  # فقط ۵ تا سیگنال برتر رو ارسال کن
                 if self._should_send_signal(signal):
                     signals_to_send.append(signal)
             
@@ -342,21 +345,25 @@ class CryptoSignalBot:
             # 🔥 گزارش وضعیت نهایی
             # ================================================
             summary = get_performance_summary(state)
-            position_info = get_position_info(state)
+            positions = state.get("positions", [])
             
             logger.info(
                 f"💰 Balance: {summary.get('balance', 530.0):.2f} USDT "
                 f"| P/L: {summary.get('total_pnl', 0):+.2f} USDT "
                 f"| Win Rate: {summary.get('win_rate', 0)*100:.1f}% "
                 f"| Trades: {summary.get('total_trades', 0)} "
-                f"| In Position: {summary.get('in_position', False)}"
+                f"| Open Positions: {len(positions)}/{MAX_POSITIONS}"
             )
             
-            if position_info:
-                logger.info(
-                    f"   📊 Position: {position_info['symbol']} @ {position_info['entry_price']:.4f} "
-                    f"| PnL: {state.get('unrealized_pnl', 0):+.2f} USDT"
-                )
+            if positions:
+                for pos in positions:
+                    pnl = pos.get("unrealized_pnl", 0)
+                    logger.info(
+                        f"   📊 {pos['symbol']} @ {pos['entry_price']:.4f} "
+                        f"| PnL: {pnl:+.2f} USDT "
+                        f"| SL: {pos.get('stop_loss', 0):.4f} "
+                        f"| TP: {pos.get('take_profit', 0):.4f}"
+                    )
             
             # ================================================
             # 🔥 ذخیره وضعیت نهایی
@@ -561,7 +568,7 @@ class CryptoSignalBot:
         # بارگذاری وضعیت نهایی
         state = load_state()
         summary = get_performance_summary(state)
-        position_info = get_position_info(state)
+        positions = state.get("positions", [])
         
         logger.info(f"💰 سرمایه اولیه: {summary.get('initial_balance', 530.0):.2f} USDT")
         logger.info(f"💰 سرمایه فعلی: {summary.get('balance', 530.0):.2f} USDT")
@@ -571,12 +578,14 @@ class CryptoSignalBot:
         logger.info(f"✅ معاملات برنده: {summary.get('winning_trades', 0)}")
         logger.info(f"❌ معاملات بازنده: {summary.get('losing_trades', 0)}")
         logger.info(f"🎯 نرخ برد: {summary.get('win_rate', 0)*100:.1f}%")
-        logger.info(f"📭 پوزیشن باز: {summary.get('in_position', False)}")
+        logger.info(f"📭 پوزیشن‌های باز: {len(positions)}/{MAX_POSITIONS}")
         
-        if position_info:
-            logger.info(f"   📊 {position_info['symbol']} @ {position_info['entry_price']:.4f}")
-            logger.info(f"   🛑 حد ضرر: {position_info['stop_loss']:.4f}")
-            logger.info(f"   🎯 حد سود: {position_info['take_profit']:.4f}")
+        if positions:
+            logger.info("   📊 پوزیشن‌های باز:")
+            for pos in positions:
+                pnl = pos.get("unrealized_pnl", 0)
+                logger.info(f"      {pos['symbol']} @ {pos['entry_price']:.4f} | PnL: {pnl:+.2f} USDT")
+                logger.info(f"      🛑 SL: {pos.get('stop_loss', 0):.4f} | 🎯 TP: {pos.get('take_profit', 0):.4f}")
         
         logger.info("=" * 60)
     
