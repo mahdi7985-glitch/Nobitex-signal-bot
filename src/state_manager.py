@@ -182,7 +182,7 @@ def open_position(
         "stop_loss": stop_loss,
         "take_profit": take_profit,
         "entry_time": datetime.now().isoformat(),
-        "signal_data": signal_data,
+        "signal_data": signal_data,  # 🔥 اینجا ذخیره میشه
         "unrealized_pnl": 0.0,
         "status": "OPEN"
     }
@@ -232,7 +232,27 @@ def close_position(
     symbol = position["symbol"]
     entry_price = position["entry_price"]
     position_size = position["position_size"]
-    signal_data = position.get("signal_data")
+    signal_data = position.get("signal_data", {})
+    
+    # ================================================
+    # 🔥 استخراج اطلاعات AI از signal_data
+    # ================================================
+    ai_signal = signal_data.get("ai_signal", "")
+    ai_confidence = signal_data.get("ai_confidence", 0)
+    ai_summary = signal_data.get("ai_summary", "")
+    
+    # محاسبه توافق AI با ربات
+    side = position.get("side", "LONG")
+    ai_agreement = None
+    if ai_signal:
+        if side == "LONG" and ai_signal.upper() == "BUY":
+            ai_agreement = True
+        elif side == "LONG" and ai_signal.upper() == "SELL":
+            ai_agreement = False
+        elif side == "SHORT" and ai_signal.upper() == "SELL":
+            ai_agreement = True
+        elif side == "SHORT" and ai_signal.upper() == "BUY":
+            ai_agreement = False
     
     # محاسبه سود/زیان
     pnl_percent = (exit_price - entry_price) / entry_price
@@ -289,7 +309,9 @@ def close_position(
     logger.info(f"   📝 دلیل: {reason}")
     logger.info(f"   📈 پوزیشن‌های باقیمانده: {len(state['positions'])}")
     
-    # ثبت در CSV
+    # ================================================
+    # 🔥 ثبت در CSV با اطلاعات AI
+    # ================================================
     try:
         from src.trade_logger import log_trade
         log_trade(
@@ -316,7 +338,14 @@ def close_position(
             macd_signal=signal_data.get('macd_signal', 0) if signal_data else 0,
             adx=signal_data.get('adx', 0) if signal_data else 0,
             strategy_version="v1.0",
-            notes=f"Stop Loss: {position.get('stop_loss', 0)}, Take Profit: {position.get('take_profit', 0)}"
+            notes=f"Stop Loss: {position.get('stop_loss', 0)}, Take Profit: {position.get('take_profit', 0)}",
+            # ================================================
+            # 🔥 اطلاعات AI
+            # ================================================
+            ai_signal=ai_signal,
+            ai_confidence=ai_confidence,
+            ai_agreement=ai_agreement,
+            ai_summary=ai_summary
         )
     except Exception as e:
         logger.warning(f"⚠️ خطا در ثبت CSV: {e}")
