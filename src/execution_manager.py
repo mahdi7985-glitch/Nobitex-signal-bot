@@ -46,6 +46,11 @@ class ExecutionManager:
     def process_signal(self, signal: Dict[str, Any]) -> bool:
         """
         پردازش سیگنال و اجرای معامله با مدیریت سرمایه (بر اساس USDT)
+        
+        🔥 اصلاح شده:
+        - بررسی دقیق‌تر موجودی قبل از اجرا
+        - جلوگیری از ثبت دوباره معامله
+        - لاگ دقیق‌تر
         """
         if not signal or not self.executor:
             return False
@@ -60,19 +65,40 @@ class ExecutionManager:
         take_profit = signal.get('tp1_raw')
         
         # ================================================
-        # بررسی امکان ورود به معامله
+        # ۱. بررسی امکان ورود به معامله (تعداد + موجودی)
         # ================================================
         if not self.balance_manager.can_open_new_position():
             logger.warning(f"⛔ امکان ورود به معامله {symbol} وجود ندارد")
             return False
         
         # ================================================
-        # 🔥 حجم معامله به USDT (مبنا)
+        # ۲. 🔥 بررسی اینکه آیا همین ارز قبلاً در معامله باز است
+        # ================================================
+        open_positions = self.balance_manager.get_open_positions()
+        for pos in open_positions:
+            if pos.get('symbol') == symbol:
+                logger.info(f"⏭️ {symbol} در حال حاضر در معامله باز است، رد شد")
+                return False
+        
+        # ================================================
+        # ۳. محاسبه حجم معامله به USDT
         # ================================================
         position_size_usdt = self.balance_manager.get_position_size()
         
+        # بررسی معتبر بودن حجم
+        if position_size_usdt <= 0:
+            logger.error(f"❌ حجم معامله نامعتبر: {position_size_usdt:.2f} USDT")
+            return False
+        
         # ================================================
-        # 🔥 ارسال حجم به USDT به PaperExecutor
+        # ۴. 🔥 بررسی نهایی موجودی (قبل از ارسال به executor)
+        # ================================================
+        if self.balance_manager.get_balance() < position_size_usdt:
+            logger.error(f"❌ موجودی ناکافی: {self.balance_manager.get_balance():.2f} < {position_size_usdt:.2f}")
+            return False
+        
+        # ================================================
+        # ۵. ارسال حجم به USDT به PaperExecutor
         # ================================================
         if action == 'BUY':
             result = self.executor.execute_buy(
@@ -94,7 +120,7 @@ class ExecutionManager:
             )
         
         # ================================================
-        # ثبت معامله در BalanceManager (به USDT)
+        # ۶. ثبت معامله در BalanceManager
         # ================================================
         if result:
             position = self.balance_manager.open_position(
@@ -106,9 +132,12 @@ class ExecutionManager:
             
             if position:
                 logger.info(f"✅ معامله {symbol} با حجم {position_size_usdt:.2f} USDT ثبت شد")
+                logger.info(f"   💰 موجودی باقیمانده: {self.balance_manager.get_balance():.2f} USDT")
+                logger.info(f"   📈 تعداد معاملات باز: {len(self.balance_manager.get_open_positions())}")
                 return True
             else:
                 logger.error(f"❌ ثبت معامله در BalanceManager ناموفق بود")
+                # برگرداندن موجودی (در صورت نیاز)
                 return False
         
         return False
@@ -132,6 +161,9 @@ class ExecutionManager:
     def _check_and_close_positions(self, prices: Dict[str, float]):
         """بررسی موقعیت‌های باز و بستن خودکار"""
         open_positions = self.balance_manager.get_open_positions()
+        
+        if not open_positions:
+            return
         
         for position in open_positions:
             symbol = position['symbol']
@@ -163,8 +195,10 @@ class ExecutionManager:
             logger.info(f"✅ معامله {symbol} بسته شد: {reason}")
             logger.info(f"   💰 سود/زیان: {trade_record['realized_pnl']:.2f} USDT")
             logger.info(f"   💳 موجودی جدید: {self.balance_manager.get_balance():.2f} USDT")
+            logger.info(f"   📈 تعداد معاملات باز: {len(self.balance_manager.get_open_positions())}")
             return trade_record
         
+        logger.warning(f"⚠️ بستن معامله {symbol} ناموفق بود")
         return None
     
     def get_balance(self) -> float:
