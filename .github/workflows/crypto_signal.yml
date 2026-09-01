@@ -31,7 +31,8 @@ jobs:
       - name: Create directories
         run: |
           mkdir -p logs
-          mkdir -p data
+          mkdir -p src/data
+          mkdir -p src/data/logs
 
       - name: Run Crypto Signal Bot
         env:
@@ -45,10 +46,32 @@ jobs:
         run: |
           python run.py --once
 
+      # ================================================
+      # 🔥 مرحله جدید: ذخیره وضعیت در ریپو
+      # ================================================
+      - name: Commit updated state
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # اضافه کردن فایل‌های وضعیت
+          git add state.json || true
+          git add src/data/portfolio_state.json || true
+          git add src/data/trades_history.json || true
+          
+          # کامیت کردن اگه تغییری وجود داشته باشه
+          git diff --staged --quiet || git commit -m "update trade state [skip ci]"
+          
+          # push به ریپو
+          git push
+
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: logs
-          path: logs/
+          path: |
+            logs/
+            state.json
+            src/data/
           if-no-files-found: ignore
