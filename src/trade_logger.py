@@ -40,7 +40,14 @@ CSV_HEADERS = [
     "macd_signal",
     "adx",
     "strategy_version",
-    "notes"
+    "notes",
+    # ================================================
+    # 🔥 فیلدهای جدید برای AI
+    # ================================================
+    "ai_signal",
+    "ai_confidence",
+    "ai_agreement",
+    "ai_summary"
 ]
 
 
@@ -115,7 +122,14 @@ def log_trade(
     macd_signal: Optional[float] = None,
     adx: Optional[float] = None,
     strategy_version: str = "v1.0",
-    notes: str = ""
+    notes: str = "",
+    # ================================================
+    # 🔥 پارامترهای جدید برای AI
+    # ================================================
+    ai_signal: Optional[str] = None,
+    ai_confidence: Optional[float] = None,
+    ai_agreement: Optional[bool] = None,
+    ai_summary: Optional[str] = ""
 ) -> bool:
     """
     ثبت یک معامله کامل در فایل CSV
@@ -137,6 +151,16 @@ def log_trade(
         # رند کردن اعداد
         def r(v, d=8):
             return round(v, d) if v is not None else ""
+        
+        # تبدیل توافق AI به رشته
+        ai_agreement_str = ""
+        if ai_agreement is True:
+            ai_agreement_str = "AGREE"
+        elif ai_agreement is False:
+            ai_agreement_str = "DISAGREE"
+        
+        # محدود کردن طول خلاصه AI
+        ai_summary_short = ai_summary[:500] if ai_summary else ""
         
         # آماده‌سازی ردیف
         row = [
@@ -164,7 +188,14 @@ def log_trade(
             r(macd_signal, 6) if macd_signal is not None else "",
             r(adx, 1) if adx is not None else "",
             strategy_version,
-            notes
+            notes,
+            # ================================================
+            # 🔥 فیلدهای جدید AI
+            # ================================================
+            ai_signal.upper() if ai_signal else "",
+            r(ai_confidence, 1) if ai_confidence is not None else "",
+            ai_agreement_str,
+            ai_summary_short
         ]
         
         # نوشتن در فایل
@@ -173,6 +204,8 @@ def log_trade(
             writer.writerow(row)
         
         logger.info(f"✅ معامله {symbol} با ID {trade_id} در CSV ثبت شد")
+        if ai_signal:
+            logger.info(f"   🤖 AI Signal: {ai_signal} | Confidence: {ai_confidence}% | Agree: {ai_agreement_str}")
         return True
         
     except Exception as e:
@@ -213,7 +246,8 @@ def get_summary_stats() -> Dict[str, Any]:
                 "worst_trade": 0,
                 "avg_rr_actual": 0,
                 "total_fees": 0,
-                "total_gross_pnl": 0
+                "total_gross_pnl": 0,
+                "ai_agreement_rate": 0
             }
         
         df = pd.read_csv(CSV_FILE)
@@ -230,11 +264,16 @@ def get_summary_stats() -> Dict[str, Any]:
                 "worst_trade": 0,
                 "avg_rr_actual": 0,
                 "total_fees": 0,
-                "total_gross_pnl": 0
+                "total_gross_pnl": 0,
+                "ai_agreement_rate": 0
             }
         
         winning = df[df['net_pnl'] > 0]
         losing = df[df['net_pnl'] < 0]
+        
+        # محاسبه نرخ توافق AI
+        ai_agree_count = len(df[df['ai_agreement'] == 'AGREE']) if 'ai_agreement' in df.columns else 0
+        ai_total = len(df[df['ai_agreement'] != '']) if 'ai_agreement' in df.columns else 0
         
         return {
             "total_trades": len(df),
@@ -247,7 +286,8 @@ def get_summary_stats() -> Dict[str, Any]:
             "worst_trade": df['net_pnl'].min(),
             "avg_rr_actual": df['rr_actual'].mean() if 'rr_actual' in df.columns else 0,
             "total_fees": df['fees'].sum() if 'fees' in df.columns else 0,
-            "total_gross_pnl": df['gross_pnl'].sum() if 'gross_pnl' in df.columns else 0
+            "total_gross_pnl": df['gross_pnl'].sum() if 'gross_pnl' in df.columns else 0,
+            "ai_agreement_rate": ai_agree_count / ai_total if ai_total > 0 else 0
         }
     except Exception as e:
         logger.error(f"❌ خطا در دریافت آمار: {e}")
@@ -276,4 +316,5 @@ def print_summary():
     print(f"🏆 بهترین معامله: {stats['best_trade']:.2f} USDT")
     print(f"💔 بدترین معامله: {stats['worst_trade']:.2f} USDT")
     print(f"⚖️ میانگین RR واقعی: {stats['avg_rr_actual']:.2f}")
+    print(f"🤖 نرخ توافق AI: {stats['ai_agreement_rate']*100:.1f}%")
     print("="*50)
