@@ -5,6 +5,7 @@ Core signal generation based on technical indicators and scoring
 
 import logging
 from typing import Optional, Dict, Any, List
+from datetime import datetime  # 🔥 اضافه شد
 
 import pandas as pd
 
@@ -195,7 +196,7 @@ class SignalEngine:
                     'signal_rating': signal_rating,
                     'exceptional': False,
                     'exceptional_reason': None,
-                    'timestamp': pd.Timestamp.now(),
+                    'timestamp': datetime.now().isoformat(),  # 🔥 اصلاح شد
                     'data_quality': data_quality,
                     'position_size': 0.0,
                     'position_value': 0.0
@@ -262,7 +263,7 @@ class SignalEngine:
                         'exceptional': signal.get('exceptional', False),
                         'exceptional_reason': signal.get('exceptional_reason'),
                         'reason': f'Low R/R: {risk_levels.get("risk_reward", 0):.2f}',
-                        'timestamp': pd.Timestamp.now(),
+                        'timestamp': datetime.now().isoformat(),  # 🔥 اصلاح شد
                         'data_quality': data_quality,
                         'position_size': 0.0,
                         'position_value': 0.0
@@ -307,7 +308,7 @@ class SignalEngine:
                     'exceptional': signal.get('exceptional', False),
                     'exceptional_reason': signal.get('exceptional_reason'),
                     'reason': f'Low confidence for SELL: {confidence:.1f}%',
-                    'timestamp': pd.Timestamp.now(),
+                    'timestamp': datetime.now().isoformat(),  # 🔥 اصلاح شد
                     'data_quality': data_quality,
                     'position_size': 0.0,
                     'position_value': 0.0
@@ -357,13 +358,13 @@ class SignalEngine:
                 'tp2': risk_levels_display['tp2'],
                 'tp2_raw': risk_levels.get('tp2_raw'),
                 'risk_reward': risk_levels_display['risk_reward'],
-                'timestamp': pd.Timestamp.now(),
+                'timestamp': datetime.now().isoformat(),  # 🔥 اصلاح شد
                 'data_quality': data_quality,
                 # ================================================
                 # 🔥 اضافه شده برای هماهنگی با ExecutionManager
                 # ================================================
-                'position_size': 0.25,  # مقدار پیشفرض (ExecutionManager بازنویسی میکنه)
-                'position_value': 0.25,  # برای Paper Trading
+                'position_size': 0.25,
+                'position_value': 0.25,
             }
 
         except Exception as e:
