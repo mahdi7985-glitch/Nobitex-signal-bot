@@ -1,15 +1,27 @@
 {
-  "in_position": true,
-  "symbol": "APT",
-  "entry_price": 0.5478,
-  "position_size": 106.0,
-  "stop_loss": 0.5428798961530176,
-  "take_profit": 0.556000173078304,
-  "entry_time": "2026-09-01T12:47:21.449670",
-  "history": [],
-  "total_pnl": 0.0,
-  "balance": 424.0,
+  "in_position": false,
+  "symbol": null,
+  "entry_price": 0.0,
+  "position_size": 0.0,
+  "stop_loss": 0.0,
+  "take_profit": 0.0,
+  "entry_time": null,
+  "history": [
+    {
+      "symbol": "APT",
+      "entry_price": 0.5478,
+      "exit_price": 0.5601,
+      "position_size": 106.0,
+      "realized_pnl": 2.3801,
+      "pnl_percent": 2.25,
+      "entry_time": "2026-09-01T12:47:21.449670",
+      "exit_time": "2026-09-01T19:30:17.516127",
+      "close_reason": "take_profit"
+    }
+  ],
+  "total_pnl": 2.3800657174151323,
+  "balance": 532.3800657174152,
   "initial_balance": 530.0,
-  "updated_at": "2026-09-01T19:18:20.956529",
-  "unrealized_pnl": 1.219058050383368
+  "updated_at": "2026-09-01T19:30:19.924605",
+  "unrealized_pnl": 2.3800657174151323
 }
