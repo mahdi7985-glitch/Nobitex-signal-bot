@@ -135,31 +135,90 @@ class BalanceManager:
         return self._open_positions
     
     def can_open_new_position(self) -> bool:
-        """بررسی امکان باز کردن معامله جدید"""
+        """
+        بررسی امکان باز کردن معامله جدید
+        
+        🔥 اصلاح شده:
+        - بررسی دقیق موجودی نقد
+        - جلوگیری از موجودی منفی
+        - بررسی حداقل موجودی مورد نیاز
+        """
+        # ۱. بررسی تعداد معاملات باز
         if len(self._open_positions) >= self.max_positions:
             logger.warning(f"⛔ حداکثر معاملات همزمان ({self.max_positions}) پر شده")
             return False
         
-        min_required = self._total_equity * self.position_size_ratio
-        if self._balance < min_required:
-            logger.warning(f"⛔ موجودی ناکافی: {self._balance:.2f} < نیاز {min_required:.2f}")
+        # ۲. محاسبه حجم معامله پیشنهادی
+        position_size = self.get_position_size()
+        
+        # ۳. بررسی موجودی نقد کافی
+        if self._balance < position_size:
+            logger.warning(f"⛔ موجودی ناکافی: {self._balance:.2f} < نیاز {position_size:.2f}")
+            return False
+        
+        # ۴. بررسی موجودی بعد از معامله (نباید منفی بشه)
+        if self._balance - position_size < 0:
+            logger.warning(f"⛔ موجودی کافی برای معامله جدید نیست: {self._balance:.2f}")
+            return False
+        
+        # ۵. بررسی حداقل موجودی باقی‌مانده (اختیاری)
+        min_reserve = 10.0  # حداقل ۱۰ USDT باید بمونه
+        if self._balance - position_size < min_reserve:
+            logger.warning(f"⛔ موجودی باقی‌مانده کمتر از {min_reserve} USDT خواهد شد")
             return False
         
         return True
     
     def get_position_size(self) -> float:
-        """محاسبه حجم معامله بر اساس کل دارایی"""
-        return self._total_equity * self.position_size_ratio
+        """
+        محاسبه حجم معامله بر اساس موجودی نقد
+        
+        🔥 اصلاح شده:
+        - استفاده از موجودی نقد به جای کل دارایی
+        - محدود کردن به موجودی موجود
+        """
+        # محاسبه حجم بر اساس کل دارایی
+        calculated_size = self._total_equity * self.position_size_ratio
+        
+        # محدود کردن به موجودی نقد (نمیشه بیشتر از موجودی خرج کرد)
+        max_usable = self._balance
+        
+        # حجم نهایی: حداقل بین حجم محاسبه شده و موجودی نقد
+        final_size = min(calculated_size, max_usable)
+        
+        # اگر حجم خیلی کم بود، حداقل رو رعایت کن
+        min_size = 5.0  # حداقل ۵ USDT
+        if final_size < min_size and self._balance >= min_size:
+            final_size = min_size
+        
+        return final_size
     
     def open_position(self, symbol: str, entry_price: float, 
                      stop_loss: float, take_profit: float) -> Dict:
         """
         باز کردن معامله جدید
+        
+        🔥 اصلاح شده:
+        - بررسی نهایی موجودی قبل از باز کردن
+        - جلوگیری از موجودی منفی
         """
+        # بررسی امکان ورود
         if not self.can_open_new_position():
             return None
         
+        # محاسبه حجم معامله
         position_size = self.get_position_size()
+        
+        # 🔥 بررسی نهایی: موجودی نباید منفی بشه
+        if self._balance - position_size < 0:
+            logger.error(f"❌ موجودی کافی نیست: {self._balance:.2f} < {position_size:.2f}")
+            return None
+        
+        # 🔥 بررسی نهایی: موجودی نباید کمتر از حداقل باشه
+        min_reserve = 10.0
+        if self._balance - position_size < min_reserve:
+            logger.error(f"❌ موجودی باقی‌مانده کمتر از {min_reserve} USDT خواهد شد")
+            return None
         
         position = {
             'symbol': symbol,
@@ -265,7 +324,10 @@ class BalanceManager:
                 'total_pnl': 0,
                 'avg_pnl': 0,
                 'current_balance': self._balance,
-                'total_equity': self._total_equity
+                'total_equity': self._total_equity,
+                'winning_trades': 0,
+                'losing_trades': 0,
+                'open_positions': len(self._open_positions)
             }
         
         winning_trades = [t for t in closed_trades if t['realized_pnl'] > 0]
@@ -277,7 +339,7 @@ class BalanceManager:
             'losing_trades': len(losing_trades),
             'win_rate': len(winning_trades) / total_trades if total_trades > 0 else 0,
             'total_pnl': sum(t['realized_pnl'] for t in closed_trades),
-            'avg_pnl': sum(t['realized_pnl'] for t in closed_trades) / total_trades,
+            'avg_pnl': sum(t['realized_pnl'] for t in closed_trades) / total_trades if total_trades > 0 else 0,
             'best_trade': max(closed_trades, key=lambda x: x['realized_pnl']) if winning_trades else None,
             'worst_trade': min(closed_trades, key=lambda x: x['realized_pnl']) if losing_trades else None,
             'current_balance': self._balance,
