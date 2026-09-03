@@ -146,7 +146,7 @@
         "sell_fee": 0.0,
         "timeframe": "15m"
       },
-      "unrealized_pnl": 0.601694180816796,
+      "unrealized_pnl": 0.3868034019536546,
       "status": "OPEN"
     },
     {
@@ -295,7 +295,7 @@
         "sell_fee": 0.0,
         "timeframe": "15m"
       },
-      "unrealized_pnl": 0.21244463150709914,
+      "unrealized_pnl": 0.16400919294102215,
       "status": "OPEN"
     },
     {
@@ -444,7 +444,7 @@
         "sell_fee": 0.0,
         "timeframe": "15m"
       },
-      "unrealized_pnl": 0.2682783389590984,
+      "unrealized_pnl": 0.34687550857601723,
       "status": "OPEN"
     },
     {
@@ -593,7 +593,7 @@
         "sell_fee": 0.0,
         "timeframe": "15m"
       },
-      "unrealized_pnl": 0.3172809508894903,
+      "unrealized_pnl": 0.19530622477711515,
       "status": "OPEN"
     },
     {
@@ -742,7 +742,7 @@
         "sell_fee": 0.0,
         "timeframe": "15m"
       },
-      "unrealized_pnl": 0.25232146324960325,
+      "unrealized_pnl": 0.5040136959175373,
       "status": "OPEN"
     }
   ],
@@ -3966,5 +3966,5 @@
   ],
   "total_pnl": -8.233452608597842,
   "total_trades": 21,
-  "updated_at": "2026-09-03T17:36:11.276171"
+  "updated_at": "2026-09-03T18:02:15.087847"
 }
