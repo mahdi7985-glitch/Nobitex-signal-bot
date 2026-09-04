@@ -202,6 +202,12 @@ class Config:
     CANDLES_LIMIT = 500
     MIN_CANDLES_REQUIRED = 499
     HIGHER_TIMEFRAMES = ["1h", "4h", "1d"]
+    MIN_CANDLES_BY_TIMEFRAME = {
+    "15m": 499,
+    "1h": 399,
+    "4h": 299,
+    "1d": 199,
+    }
 
     # =========================
     # TECHNICAL INDICATORS
