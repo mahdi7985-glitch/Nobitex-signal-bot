@@ -1,6 +1,6 @@
 """
-AI Analyzer Module
-Responsible for sending data to AI and receiving analysis
+AI Analyzer Module - نسخه ۲.۰ (مستقل با داده کامل)
+Responsible for independent market analysis based on raw OHLCV data
 """
 
 import logging
@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 
 class AIAnalyzer:
     """
-    تحلیلگر هوش مصنوعی برای بررسی سیگنالها و اخبار
+    تحلیلگر هوش مصنوعی مستقل
+    فقط داده خام OHLCV را دریافت کرده و تحلیل خود را ارائه می‌دهد
     """
     
     def __init__(self, config=Config):
@@ -35,7 +36,7 @@ class AIAnalyzer:
         self.timeout = config.AI_TIMEOUT
         
         # =========================
-        # راهاندازی Gemini در صورت انتخاب
+        # راه‌اندازی Gemini در صورت انتخاب
         # =========================
         self.gemini_model = None
         if self.provider == 'gemini' and self.api_key and genai:
@@ -51,33 +52,22 @@ class AIAnalyzer:
         # بررسی پشتیبانی مدل از JSON mode
         # =========================
         self.supports_json_mode = self._check_json_mode_support()
-        
+    
     def _check_json_mode_support(self) -> bool:
-        """
-        بررسی اینکه مدل انتخابی از JSON mode پشتیبانی میکند
-        """
-        # فقط برای OpenAI معنی دارد
+        """بررسی اینکه مدل انتخابی از JSON mode پشتیبانی می‌کند"""
         if self.provider != 'openai':
             return False
             
-        # مدلهای پشتیبانیکننده از JSON mode (بر اساس نام دقیق)
         json_supported_models = [
-            "gpt-4o",
-            "gpt-4o-mini",
-            "gpt-4-turbo",
-            "gpt-4-turbo-preview",
-            "gpt-4-0125-preview",
-            "gpt-4-1106-preview",
-            "gpt-3.5-turbo-0125",
-            "gpt-3.5-turbo-1106"
+            "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4-turbo-preview",
+            "gpt-4-0125-preview", "gpt-4-1106-preview",
+            "gpt-3.5-turbo-0125", "gpt-3.5-turbo-1106"
         ]
         
-        # بررسی تطابق دقیق مدل
         if self.model in json_supported_models:
             logger.info(f"✅ JSON mode supported for model: {self.model}")
             return True
         
-        # اگر مدل با gpt-4 شروع شود و در لیست نباشد، احتمالاً پشتیبانی میکند
         if self.model.startswith("gpt-4"):
             logger.info(f"⚠️ Assuming JSON mode support for {self.model} (GPT-4 family)")
             return True
@@ -87,54 +77,42 @@ class AIAnalyzer:
     
     def analyze(
         self, 
-        signal_data: Dict[str, Any],
-        news_summary: Optional[str] = None,
-        news_sentiment: Optional[Dict[str, Any]] = None,
-        market_regime: str = "خنثی"
+        ohlcv_data: List[Dict[str, Any]],
+        symbol: str,
+        current_price: float,
+        timeframe: str = "15m"
     ) -> Dict[str, Any]:
         """
-        تحلیل سیگنال توسط هوش مصنوعی
+        تحلیل مستقل بازار توسط هوش مصنوعی بر اساس داده خام
         
         Args:
-            signal_data: دیکشنری سیگنال تولید شده توسط SignalEngine
-            news_summary: خلاصه اخبار از NewsReader
-            news_sentiment: دیکشنری احساسات اخبار (اختیاری)
-            market_regime: وضعیت کلی بازار
+            ohlcv_data: لیستی از کندل‌ها با کلیدهای timestamp, open, high, low, close, volume
+            symbol: نماد دارایی (مثلاً BTC)
+            current_price: قیمت فعلی
+            timeframe: تایم‌فریم داده‌ها (پیش‌فرض: 15m)
             
         Returns:
-            دیکشنری شامل نظر AI
+            دیکشنری شامل تحلیل مستقل AI
         """
         # اگر AI غیرفعال است
         if not self.config.ENABLE_AI_ANALYSIS:
-            return {
-                'enabled': False,
-                'analysis': 'AI analysis is disabled',
-                'opinion': 'NEUTRAL',
-                'confidence': 0,
-                'summary': 'AI analysis is disabled'
-            }
+            return self._create_fallback_response("AI analysis is disabled")
         
         # اگر API Key موجود نیست
         if not self.api_key:
             logger.warning("⚠️ AI_API_KEY not set")
-            return {
-                'enabled': True,
-                'analysis': 'AI API key not configured',
-                'opinion': 'NEUTRAL',
-                'confidence': 0,
-                'summary': 'AI API key not configured'
-            }
+            return self._create_fallback_response("AI API key not configured")
+        
+        # اگر داده خام وجود ندارد
+        if not ohlcv_data or len(ohlcv_data) < 50:
+            logger.warning(f"⚠️ Insufficient OHLCV data: {len(ohlcv_data) if ohlcv_data else 0} candles")
+            return self._create_fallback_response("Insufficient OHLCV data for analysis")
         
         try:
             # =========================
-            # ساخت پرامپت با درخواست خروجی JSON
+            # ساخت پرامپت با داده کامل
             # =========================
-            prompt = self._build_prompt(
-                signal_data, 
-                news_summary, 
-                news_sentiment,
-                market_regime
-            )
+            prompt = self._build_prompt(ohlcv_data, symbol, current_price, timeframe)
             
             # =========================
             # ارسال به AI بر اساس provider
@@ -145,231 +123,211 @@ class AIAnalyzer:
                 response = self._call_gemini(prompt)
             else:
                 logger.warning(f"⚠️ Unknown AI provider: {self.provider}")
-                return {
-                    'enabled': True,
-                    'analysis': f'Unknown AI provider: {self.provider}',
-                    'opinion': 'NEUTRAL',
-                    'confidence': 0,
-                    'summary': f'Unknown AI provider: {self.provider}'
-                }
+                return self._create_fallback_response(f"Unknown AI provider: {self.provider}")
             
             # =========================
             # پردازش پاسخ
             # =========================
             if response:
-                return self._parse_response(response, signal_data)
+                return self._parse_response(response)
             else:
-                return {
-                    'enabled': True,
-                    'analysis': 'AI returned empty response',
-                    'opinion': 'NEUTRAL',
-                    'confidence': 0,
-                    'summary': 'AI returned empty response'
-                }
+                return self._create_fallback_response("AI returned empty response")
                 
         except requests.exceptions.Timeout:
             logger.error("❌ AI request timeout")
-            return {
-                'enabled': True,
-                'analysis': 'AI request timeout',
-                'opinion': 'NEUTRAL',
-                'confidence': 0,
-                'summary': 'AI request timeout'
-            }
+            return self._create_fallback_response("AI request timeout")
         except requests.exceptions.RequestException as e:
             logger.error(f"❌ AI request error: {e}")
-            return {
-                'enabled': True,
-                'analysis': f'AI request error: {str(e)[:100]}',
-                'opinion': 'NEUTRAL',
-                'confidence': 0,
-                'summary': f'AI request error: {str(e)[:100]}'
-            }
+            return self._create_fallback_response(f"AI request error: {str(e)[:100]}")
         except Exception as e:
             logger.error(f"❌ AI analysis error: {e}")
-            return {
-                'enabled': True,
-                'analysis': f'AI error: {str(e)[:100]}',
-                'opinion': 'NEUTRAL',
-                'confidence': 0,
-                'summary': f'AI error: {str(e)[:100]}'
-            }
+            return self._create_fallback_response(f"AI error: {str(e)[:100]}")
     
-    def _format_number(self, value: Optional[float], default: str = "نامشخص") -> str:
+    def _create_fallback_response(self, reason: str) -> Dict[str, Any]:
         """
-        فرمت کردن عدد با جداکننده هزارگان
+        ایجاد پاسخ پیش‌فرض در صورت خطا
+        """
+        return {
+            'enabled': True,
+            'direction': 'INVALID',
+            'confidence': 0,
+            'trend': 'UNKNOWN',
+            'trend_strength': 0,
+            'momentum': 'NEUTRAL',
+            'volume_confirmation': 'UNKNOWN',
+            'market_structure': 'UNKNOWN',
+            'breakout_status': 'UNKNOWN',
+            'entry_quality': 'POOR',
+            'main_positive_factors': [],
+            'main_risks': [reason],
+            'invalidation_reason': reason,
+            'summary': f'Analysis failed: {reason}',
+            'reason_codes': ['ANALYSIS_FAILED'],
+            'parse_error': True
+        }
+    
+    def _format_candles_compact(self, ohlcv_data: List[Dict[str, Any]]) -> str:
+        """
+        تبدیل کندل‌ها به رشته فشرده برای کاهش حجم پرامپت
+        فرمت: باز,بالا,پایین,بسته,حجم
+        """
+        if not ohlcv_data:
+            return "No data"
         
-        Args:
-            value: عدد مورد نظر
-            default: مقدار پیشفرض در صورت None بودن
-            
-        Returns:
-            رشته فرمت شده
-        """
-        if value is None:
-            return default
-        try:
-            return f"{value:,.0f}"
-        except (TypeError, ValueError):
-            return default
+        # محدود کردن به ۵۰۰ کندل برای کنترل حجم
+        if len(ohlcv_data) > 500:
+            ohlcv_data = ohlcv_data[-500:]
+            logger.info(f"📊 استفاده از ۵۰۰ کندل آخر از کل داده‌ها")
+        
+        # ساخت رشته فشرده
+        lines = []
+        for c in ohlcv_data:
+            lines.append(
+                f"{c['open']:.2f},{c['high']:.2f},{c['low']:.2f},{c['close']:.2f},{c['volume']:.0f}"
+            )
+        
+        return "\n".join(lines)
     
     def _build_prompt(
         self, 
-        signal_data: Dict[str, Any],
-        news_summary: Optional[str] = None,
-        news_sentiment: Optional[Dict[str, Any]] = None,
-        market_regime: str = "خنثی"
+        ohlcv_data: List[Dict[str, Any]],
+        symbol: str,
+        current_price: float,
+        timeframe: str
     ) -> str:
         """
-        ساخت پرامپت برای AI با درخواست خروجی JSON
+        ساخت پرامپت با داده کامل OHLCV
         """
-        # استخراج اطلاعات از سیگنال
-        symbol = signal_data.get('symbol', 'Unknown')
-        price = signal_data.get('price', 0)
-        signal_type = signal_data.get('signal', 'WAIT')
-        strength = signal_data.get('strength', 'NEUTRAL')
-        score = signal_data.get('score', 50)
-        confidence = signal_data.get('confidence', 50)
-        
-        rsi = signal_data.get('rsi', 50)
-        macd = signal_data.get('macd', 0)
-        macd_signal = signal_data.get('macd_signal', 0)
-        adx = signal_data.get('adx', 20)
-        di_plus = signal_data.get('di_plus', 0)
-        di_minus = signal_data.get('di_minus', 0)
-        atr = signal_data.get('atr', 0)
-        volume_ratio = signal_data.get('volume_ratio', 1.0)
-        ema_fast = signal_data.get('ema_fast', price)
-        ema_slow = signal_data.get('ema_slow', price)
-        
-        support = signal_data.get('support')
-        resistance = signal_data.get('resistance')
-        stop_loss = signal_data.get('stop_loss')
-        tp1 = signal_data.get('tp1')
-        tp2 = signal_data.get('tp2')
-        risk_reward = signal_data.get('risk_reward', 0)
-        
-        macd_status = "صعودی" if macd > macd_signal else "نزولی"
-        trend = "صعودی" if ema_fast > ema_slow else ("نزولی" if ema_fast < ema_slow else "خنثی")
-        
-        # تشخیص نوع دارایی
-        asset_type = "رمززارز"
-        if symbol in ['XAUT', 'PAXG']:
-            asset_type = "طلا"
+        if not ohlcv_data:
+            return "No data available"
         
         # =========================
-        # فرمت کردن اعداد با شرط
+        # فرمت کردن داده‌ها (فشرده)
         # =========================
-        price_text = self._format_number(price)
-        support_text = self._format_number(support)
-        resistance_text = self._format_number(resistance)
-        stop_loss_text = self._format_number(stop_loss)
-        tp1_text = self._format_number(tp1)
-        tp2_text = self._format_number(tp2)
-        atr_text = self._format_number(atr)
-        ema_fast_text = self._format_number(ema_fast)
-        ema_slow_text = self._format_number(ema_slow)
+        candles_text = self._format_candles_compact(ohlcv_data)
         
         # =========================
-        # ساخت بخش احساسات اخبار
+        # محاسبات آماری برای کمک به AI
         # =========================
-        news_section = ""
-        if news_sentiment:
-            sentiment = news_sentiment.get('sentiment', 'neutral')
-            sentiment_score = news_sentiment.get('score', 0)
-            bullish_count = news_sentiment.get('bullish_count', 0)
-            bearish_count = news_sentiment.get('bearish_count', 0)
-            
-            sentiment_emoji = {
-                'bullish': '🟢 صعودی',
-                'bearish': '🔴 نزولی',
-                'neutral': '🟡 خنثی'
-            }.get(sentiment, '🟡 خنثی')
-            
-            news_section = f"""
-### احساسات اخبار (تحلیل شده توسط سیستم):
-- جهت کلی: {sentiment_emoji}
-- امتیاز احساسات: {sentiment_score:+.2f} (از -1 تا +1)
-- سیگنالهای صعودی: {bullish_count}
-- سیگنالهای نزولی: {bearish_count}
-"""
+        closes = [c['close'] for c in ohlcv_data if c.get('close')]
+        highs = [c['high'] for c in ohlcv_data if c.get('high')]
+        lows = [c['low'] for c in ohlcv_data if c.get('low')]
+        volumes = [c['volume'] for c in ohlcv_data if c.get('volume')]
+        
+        if not closes:
+            return "No valid price data"
+        
+        # محاسبات پایه
+        highest = max(highs)
+        lowest = min(lows)
+        avg_volume = sum(volumes) / len(volumes) if volumes else 0
+        first_close = closes[0]
+        last_close = closes[-1]
+        price_change = last_close - first_close
+        price_change_percent = (price_change / first_close) * 100 if first_close != 0 else 0
+        
+        # محاسبه میانگین متحرک ساده
+        sma_20 = sum(closes[-20:]) / 20 if len(closes) >= 20 else None
+        sma_50 = sum(closes[-50:]) / 50 if len(closes) >= 50 else None
+        
+        # محاسبه نوسان (حداکثر - حداقل)
+        volatility = ((highest - lowest) / ((highest + lowest) / 2)) * 100 if (highest + lowest) > 0 else 0
         
         # =========================
-        # ساخت پرامپت با درخواست JSON
+        # ساخت پرامپت نهایی
         # =========================
-        prompt = f"""شما یک تحلیلگر حرفهای بازارهای مالی و داراییهای دیجیتال هستید.
+        prompt = f"""شما یک تحلیلگر مستقل و حرفه‌ای بازارهای مالی هستید.
 
-لطفاً بر اساس دادههای زیر تحلیل خود را ارائه دهید و در قالب JSON پاسخ دهید.
-
-### دادههای تکنیکال {symbol} ({asset_type}):
-- قیمت فعلی: {price_text}
-- RSI: {rsi:.1f}
-- MACD: {macd_status} (مقدار: {macd:.2f})
-- EMA20: {ema_fast_text}, EMA50: {ema_slow_text}
-- روند: {trend}
-- ADX (قدرت روند): {adx:.1f}
-- DI+ (جهت صعودی): {di_plus:.1f}, DI- (جهت نزولی): {di_minus:.1f}
-- نوسان (ATR): {atr_text}
-- نسبت حجم: {volume_ratio:.2f}x
-- حمایت: {support_text}, مقاومت: {resistance_text}
-
-### امتیاز سیستم ربات:
-- امتیاز کلی: {score:.1f}/100
-- سیگنال: {signal_type} ({strength})
-- اطمینان ربات: {confidence:.1f}%
-
-### مدیریت ریسک:
-- حد ضرر: {stop_loss_text}
-- هدف ۱: {tp1_text}
-- هدف ۲: {tp2_text}
-- نسبت ریسک/بازده: {risk_reward:.2f}
-
-### وضعیت کلی بازار:
-{market_regime}
-{news_section}
-### خلاصه اخبار:
-{news_summary or "اخبار در دسترس نیست"}
+### ⚠️ قانون مهم:
+- **هیچ اطلاعاتی درباره تصمیم، امتیاز یا تحلیل سیستم معاملاتی دیگری در اختیار ندارید.**
+- **صرفاً بر اساس داده‌های خام قیمت و حجم، تحلیل خود را ارائه دهید.**
+- **داده‌های کامل OHLCV برای {len(ohlcv_data)} کندل در اختیار شماست.**
+- **اگر داده برای نتیجه‌گیری کافی نیست، direction را INVALID بگذارید.**
 
 ---
-لطفاً پاسخ خود را دقیقاً در قالب JSON زیر بنویسید:
 
+### 📊 اطلاعات پایه:
+- **نماد:** {symbol}
+- **تایم‌فریم:** {timeframe}
+- **تعداد کندل‌ها:** {len(ohlcv_data)}
+- **قیمت فعلی:** {current_price:.2f}
+- **بیشترین قیمت (کل دوره):** {highest:.2f}
+- **کمترین قیمت (کل دوره):** {lowest:.2f}
+- **نوسان کل دوره:** {volatility:.2f}%
+- **تغییر قیمت کل:** {price_change:+.2f} ({price_change_percent:+.2f}%)
+- **میانگین حجم:** {avg_volume:.0f}
+"""
+        
+        # اضافه کردن میانگین متحرک در صورت وجود
+        if sma_20:
+            prompt += f"- **میانگین متحرک ۲۰ دوره:** {sma_20:.2f}\n"
+        if sma_50:
+            prompt += f"- **میانگین متحرک ۵۰ دوره:** {sma_50:.2f}\n"
+        
+        prompt += f"""
+---
+
+### 📈 داده‌های کامل OHLCV (فرمت: باز,بالا,پایین,بسته,حجم):
+{candles_text}
+
+---
+
+### 🔍 وظیفه شما:
+۱. **روند (Trend):** بازار در چه وضعیتی است؟ (صعودی، نزولی، خنثی)
+۲. **ساختار بازار (Market Structure):** آیا ساختار HH/HL (صعودی) یا LH/LL (نزولی) یا رنج است؟
+۳. **مومنتوم (Momentum):** قدرت حرکت قیمت چگونه است؟
+۴. **حجم (Volume):** آیا حجم معاملات تاییدکننده حرکت است؟
+۵. **حمایت و مقاومت (S/R):** سطوح کلیدی کدام‌اند؟
+۶. **شرایط ورود (Entry Quality):** آیا الان زمان مناسبی برای ورود است؟
+۷. **شکست‌ها (Breakouts):** آیا شکست معتبری رخ داده است؟
+
+---
+
+### 📤 خروجی مورد نظر (JSON):
 {{
-    "opinion": "BUY یا SELL یا WAIT یا NEUTRAL",
-    "confidence": 0-100,
-    "summary": "خلاصه تحلیل شما در ۲-۳ جمله",
-    "positive_factors": ["عامل مثبت ۱", "عامل مثبت ۲"],
-    "negative_factors": ["عامل منفی ۱", "عامل منفی ۲"],
-    "risk_assessment": "کم یا متوسط یا زیاد",
-    "recommendation": "توصیه نهایی شما"
+    "direction": "BUY | SELL | WAIT | INVALID",
+    "confidence": 0-10,
+    "trend": "BULLISH | BEARISH | SIDEWAYS",
+    "trend_strength": 0-10,
+    "momentum": "BULLISH | BEARISH | NEUTRAL",
+    "volume_confirmation": "YES | NO | UNKNOWN",
+    "market_structure": "HH_HL | LH_LL | RANGE | UNKNOWN",
+    "breakout_status": "BREAKOUT | BREAKDOWN | NONE | UNKNOWN",
+    "entry_quality": "GOOD | FAIR | POOR",
+    "main_positive_factors": ["عامل مثبت ۱", "عامل مثبت ۲"],
+    "main_risks": ["ریسک ۱", "ریسک ۲"],
+    "invalidation_reason": "شرط ابطال تحلیل (در صورت INVALID بودن)",
+    "summary": "خلاصه تحلیل شما در ۱-۲ جمله",
+    "reason_codes": ["CODE1", "CODE2"]
 }}
 
-فقط JSON را برگردانید، هیچ متن دیگری. باید به فارسی باشد."""
-        
+### قوانین خروجی:
+- **فقط JSON را برگردانید. هیچ متن دیگری.**
+- **confidence از ۰ تا ۱۰ باشد.** (۰=کمترین، ۱۰=بالاترین)
+- **اگر مطمئن نیستید، direction را WAIT بگذارید.**
+- **اگر داده کافی نیست، direction را INVALID بگذارید.**
+- **تحلیل خود را مستقل و بی‌طرفانه ارائه دهید.**
+"""
         return prompt
     
     def _call_gemini(self, prompt: str) -> Optional[str]:
-        """
-        فراخوانی Gemini API با استفاده از کتابخانه رسمی
-        """
+        """فراخوانی Gemini API"""
         if not self.gemini_model:
             logger.error("❌ Gemini model not initialized")
             return None
         
         try:
-            # ارسال درخواست به Gemini
             response = self.gemini_model.generate_content(prompt)
             
             if response and response.text:
-                # تلاش برای استخراج JSON از پاسخ
                 text = response.text.strip()
-                
-                # اگر پاسخ حاوی JSON است، استخراج کن
+                # تلاش برای استخراج JSON از پاسخ
                 json_match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
                 if json_match:
                     return json_match.group()
                 else:
-                    # اگر JSON نبود، کل متن را برگردان
-                    return text
+                    logger.warning("⚠️ Gemini response did not contain JSON, treating as invalid")
+                    return None
             else:
                 logger.warning("⚠️ Gemini returned empty response")
                 return None
@@ -379,9 +337,7 @@ class AIAnalyzer:
             return None
     
     def _call_openai(self, prompt: str) -> Optional[str]:
-        """
-        فراخوانی OpenAI API
-        """
+        """فراخوانی OpenAI API"""
         try:
             url = "https://api.openai.com/v1/chat/completions"
             headers = {
@@ -392,16 +348,13 @@ class AIAnalyzer:
             payload = {
                 "model": self.model,
                 "messages": [
-                    {"role": "system", "content": "شما یک تحلیلگر حرفهای بازارهای مالی هستید. همیشه به صورت JSON و با ساختار مشخص پاسخ دهید."},
+                    {"role": "system", "content": "شما یک تحلیلگر مستقل بازارهای مالی هستید. همیشه به صورت JSON با ساختار مشخص پاسخ دهید."},
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": self.config.AI_TEMPERATURE,
                 "max_tokens": self.config.AI_MAX_TOKENS
             }
             
-            # =========================
-            # فقط در صورت پشتیبانی مدل، JSON mode را فعال کن
-            # =========================
             if self.supports_json_mode:
                 payload["response_format"] = {"type": "json_object"}
                 logger.debug("Using JSON mode for OpenAI request")
@@ -415,180 +368,184 @@ class AIAnalyzer:
             
             if response.status_code == 200:
                 data = response.json()
-                return data.get('choices', [{}])[0].get('message', {}).get('content', '')
+                content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
+                
+                # تلاش برای استخراج JSON از محتوا
+                json_match = re.search(r'\{[^{}]*\}', content, re.DOTALL)
+                if json_match:
+                    return json_match.group()
+                else:
+                    logger.warning("⚠️ OpenAI response did not contain JSON")
+                    return None
             else:
-                logger.error(f"❌ OpenAI error {response.status_code}: {response.text}")
+                logger.error(f"❌ OpenAI error {response.status_code}: {response.text[:200]}")
                 return None
                 
         except Exception as e:
             logger.error(f"❌ OpenAI call error: {e}")
             return None
     
-    def _parse_response(
-        self, 
-        response: str,
-        signal_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def _parse_response(self, response: str) -> Dict[str, Any]:
         """
         پردازش پاسخ JSON از AI
+        
+        ساختار خروجی جدید:
+        - direction: BUY/SELL/WAIT/INVALID
+        - confidence: 0-10
+        - trend: BULLISH/BEARISH/SIDEWAYS
+        - و ...
         """
         try:
             # =========================
-            # تلاش برای استخراج JSON از پاسخ
+            # استخراج JSON از پاسخ
             # =========================
             json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
-            if json_match:
-                json_str = json_match.group()
-                data = json.loads(json_str)
-            else:
-                logger.warning("No JSON found in response, falling back to text parsing")
-                return self._parse_text_response(response, signal_data)
+            if not json_match:
+                logger.warning("No JSON found in AI response")
+                return self._create_fallback_response("No JSON found in response")
+            
+            json_str = json_match.group()
+            data = json.loads(json_str)
             
             # =========================
-            # استخراج فیلدها با مقدار پیشفرض
+            # استخراج و اعتبارسنجی فیلدها
             # =========================
-            opinion = data.get('opinion', 'NEUTRAL').upper()
-            if opinion not in ['BUY', 'SELL', 'WAIT', 'NEUTRAL']:
-                opinion = 'NEUTRAL'
+            direction = data.get('direction', 'WAIT').upper()
+            if direction not in ['BUY', 'SELL', 'WAIT', 'INVALID']:
+                direction = 'WAIT'
             
-            confidence = data.get('confidence', 50)
-            if not isinstance(confidence, (int, float)) or confidence < 0 or confidence > 100:
-                confidence = 50
+            # اعتبارسنجی confidence (۰-۱۰)
+            confidence = data.get('confidence', 5)
+            if not isinstance(confidence, (int, float)) or confidence < 0 or confidence > 10:
+                confidence = 5
+            confidence = int(confidence)
             
-            summary = data.get('summary', 'تحلیل AI در دسترس نیست')
-            positive_factors = data.get('positive_factors', [])
+            # اعتبارسنجی trend
+            trend = data.get('trend', 'SIDEWAYS').upper()
+            if trend not in ['BULLISH', 'BEARISH', 'SIDEWAYS']:
+                trend = 'SIDEWAYS'
+            
+            # اعتبارسنجی trend_strength (۰-۱۰)
+            trend_strength = data.get('trend_strength', 5)
+            if not isinstance(trend_strength, (int, float)) or trend_strength < 0 or trend_strength > 10:
+                trend_strength = 5
+            trend_strength = int(trend_strength)
+            
+            # اعتبارسنجی momentum
+            momentum = data.get('momentum', 'NEUTRAL').upper()
+            if momentum not in ['BULLISH', 'BEARISH', 'NEUTRAL']:
+                momentum = 'NEUTRAL'
+            
+            # اعتبارسنجی volume_confirmation
+            volume_confirmation = data.get('volume_confirmation', 'UNKNOWN').upper()
+            if volume_confirmation not in ['YES', 'NO', 'UNKNOWN']:
+                volume_confirmation = 'UNKNOWN'
+            
+            # اعتبارسنجی market_structure
+            market_structure = data.get('market_structure', 'UNKNOWN').upper()
+            if market_structure not in ['HH_HL', 'LH_LL', 'RANGE', 'UNKNOWN']:
+                market_structure = 'UNKNOWN'
+            
+            # اعتبارسنجی breakout_status
+            breakout_status = data.get('breakout_status', 'UNKNOWN').upper()
+            if breakout_status not in ['BREAKOUT', 'BREAKDOWN', 'NONE', 'UNKNOWN']:
+                breakout_status = 'UNKNOWN'
+            
+            # اعتبارسنجی entry_quality
+            entry_quality = data.get('entry_quality', 'POOR').upper()
+            if entry_quality not in ['GOOD', 'FAIR', 'POOR']:
+                entry_quality = 'POOR'
+            
+            # استخراج لیست‌ها با اعتبارسنجی
+            positive_factors = data.get('main_positive_factors', [])
             if not isinstance(positive_factors, list):
                 positive_factors = []
-            negative_factors = data.get('negative_factors', [])
-            if not isinstance(negative_factors, list):
-                negative_factors = []
-            risk_assessment = data.get('risk_assessment', 'متوسط')
-            recommendation = data.get('recommendation', '')
+            
+            risks = data.get('main_risks', [])
+            if not isinstance(risks, list):
+                risks = []
+            
+            reason_codes = data.get('reason_codes', [])
+            if not isinstance(reason_codes, list):
+                reason_codes = []
+            
+            invalidation_reason = data.get('invalidation_reason', '')
+            if not isinstance(invalidation_reason, str):
+                invalidation_reason = ''
+            
+            summary = data.get('summary', 'تحلیل AI در دسترس نیست')
+            if not isinstance(summary, str):
+                summary = str(summary)
             
             # =========================
-            # تشخیص اختلاف نظر با ربات (نرمالسازی شده)
+            # ساخت پاسخ نهایی
             # =========================
-            robot_signal = self._normalize_signal(signal_data.get('signal', 'WAIT'))
-            disagreement = False
-            if robot_signal != opinion and opinion != 'NEUTRAL':
-                disagreement = True
-            
             return {
                 'enabled': True,
-                'raw_response': response,
-                'opinion': opinion,
-                'confidence': int(confidence),
+                'direction': direction,
+                'confidence': confidence,
+                'trend': trend,
+                'trend_strength': trend_strength,
+                'momentum': momentum,
+                'volume_confirmation': volume_confirmation,
+                'market_structure': market_structure,
+                'breakout_status': breakout_status,
+                'entry_quality': entry_quality,
+                'main_positive_factors': positive_factors[:5],
+                'main_risks': risks[:5],
+                'invalidation_reason': invalidation_reason,
                 'summary': summary,
-                'positive_factors': positive_factors[:5],
-                'negative_factors': negative_factors[:5],
-                'risk_assessment': risk_assessment,
-                'recommendation': recommendation,
-                'disagreement': disagreement
+                'reason_codes': reason_codes[:5],
+                'parse_error': False
             }
             
         except json.JSONDecodeError as e:
-            logger.warning(f"⚠️ JSON decode error: {e}, falling back to text parsing")
-            return self._parse_text_response(response, signal_data)
+            logger.warning(f"⚠️ JSON decode error: {e}")
+            return self._create_fallback_response(f"JSON decode error: {str(e)[:50]}")
         except Exception as e:
             logger.error(f"❌ Error parsing AI response: {e}")
-            return self._parse_text_response(response, signal_data)
-    
-    def _normalize_signal(self, signal: str) -> str:
-        """
-        نرمالسازی سیگنال ربات برای مقایسه با AI
-        """
-        signal = signal.upper()
-        if 'BUY' in signal:
-            return 'BUY'
-        elif 'SELL' in signal:
-            return 'SELL'
-        elif 'WAIT' in signal:
-            return 'WAIT'
-        else:
-            return 'NEUTRAL'
-    
-    def _parse_text_response(
-        self, 
-        response: str,
-        signal_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        پردازش پاسخ متنی AI (Fallback در صورت عدم دریافت JSON)
-        """
-        # تشخیص نظر
-        opinion = 'NEUTRAL'
-        text_lower = response.lower()
-        
-        buy_words = ['buy', 'خرید', 'صعود', 'رشد']
-        sell_words = ['sell', 'فروش', 'نزول', 'کاهش', 'سقوط']
-        wait_words = ['wait', 'صبر', 'منتظر', 'انتظار']
-        
-        buy_count = sum(1 for word in buy_words if word in text_lower)
-        sell_count = sum(1 for word in sell_words if word in text_lower)
-        wait_count = sum(1 for word in wait_words if word in text_lower)
-        
-        if buy_count > sell_count and buy_count > wait_count:
-            opinion = 'BUY'
-        elif sell_count > buy_count and sell_count > wait_count:
-            opinion = 'SELL'
-        elif wait_count > buy_count and wait_count > sell_count:
-            opinion = 'WAIT'
-        
-        # استخراج confidence
-        confidence = 50
-        conf_match = re.search(r'اطمینان\s*[:=]\s*(\d+)', response)
-        if not conf_match:
-            conf_match = re.search(r'confidence\s*[:=]\s*(\d+)', text_lower)
-        if conf_match:
-            confidence = int(conf_match.group(1))
-        
-        # استخراج خلاصه
-        summary = response[:200] + ('...' if len(response) > 200 else '')
-        
-        robot_signal = self._normalize_signal(signal_data.get('signal', 'WAIT'))
-        disagreement = False
-        if robot_signal != opinion and opinion != 'NEUTRAL':
-            disagreement = True
-        
-        return {
-            'enabled': True,
-            'raw_response': response,
-            'opinion': opinion,
-            'confidence': confidence,
-            'summary': summary,
-            'positive_factors': [],
-            'negative_factors': [],
-            'risk_assessment': 'متوسط',
-            'recommendation': '',
-            'disagreement': disagreement
-        }
+            return self._create_fallback_response(f"Parse error: {str(e)[:50]}")
     
     def get_analysis_text(self, ai_result: Dict[str, Any]) -> str:
         """
-        تولید متن قابل نمایش برای پیام نهایی
+        تولید متن قابل نمایش برای پیام نهایی (نسخه جدید)
         """
         if not ai_result.get('enabled', False):
             return "🤖 AI: غیرفعال"
         
-        if ai_result.get('analysis'):
-            return f"🤖 AI: {ai_result.get('analysis')}"
+        if ai_result.get('parse_error', False):
+            return f"🤖 AI: تحلیل نامعتبر - {ai_result.get('summary', 'خطای ناشناخته')}"
         
-        opinion = ai_result.get('opinion', 'NEUTRAL')
+        direction = ai_result.get('direction', 'WAIT')
         confidence = ai_result.get('confidence', 0)
         summary = ai_result.get('summary', '')
-        risk = ai_result.get('risk_assessment', 'متوسط')
-        recommendation = ai_result.get('recommendation', '')
+        trend = ai_result.get('trend', 'UNKNOWN')
+        entry_quality = ai_result.get('entry_quality', 'POOR')
+        trend_strength = ai_result.get('trend_strength', 0)
         
-        opinion_emoji = {
+        direction_emoji = {
             'BUY': '🟢',
             'SELL': '🔴',
             'WAIT': '🟡',
-            'NEUTRAL': '⚪'
-        }.get(opinion, '⚪')
+            'INVALID': '⚪'
+        }.get(direction, '⚪')
+        
+        trend_emoji = {
+            'BULLISH': '📈',
+            'BEARISH': '📉',
+            'SIDEWAYS': '➡️',
+            'UNKNOWN': '❓'
+        }.get(trend, '❓')
+        
+        quality_emoji = {
+            'GOOD': '✅',
+            'FAIR': '⚠️',
+            'POOR': '🔻'
+        }.get(entry_quality, '❓')
         
         parts = [
             "━━━━━━━━━━━━━━━━━━━━",
-            "🤖 <b>تحلیل هوش مصنوعی</b>",
+            "🤖 <b>تحلیل مستقل هوش مصنوعی</b>",
             "━━━━━━━━━━━━━━━━━━━━",
         ]
         
@@ -596,35 +553,47 @@ class AIAnalyzer:
             parts.append(f"📌 {summary}")
             parts.append("")
         
-        positive = ai_result.get('positive_factors', [])
+        parts.append(f"🎯 <b>جهت‌گیری:</b> {direction_emoji} {direction}")
+        parts.append(f"📊 <b>اطمینان:</b> {confidence}/10")
+        parts.append(f"{trend_emoji} <b>روند:</b> {trend} (قدرت: {trend_strength}/10)")
+        parts.append(f"{quality_emoji} <b>کیفیت ورود:</b> {entry_quality}")
+        
+        # عوامل مثبت
+        positive = ai_result.get('main_positive_factors', [])
         if positive:
+            parts.append("")
             parts.append("🟢 <b>عوامل مثبت:</b>")
             for factor in positive[:3]:
                 parts.append(f"• {factor}")
+        
+        # ریسک‌ها
+        risks = ai_result.get('main_risks', [])
+        if risks:
             parts.append("")
+            parts.append("🔴 <b>ریسک‌ها:</b>")
+            for risk in risks[:3]:
+                parts.append(f"• {risk}")
         
-        negative = ai_result.get('negative_factors', [])
-        if negative:
-            parts.append("🔴 <b>عوامل منفی/ریسکها:</b>")
-            for factor in negative[:3]:
-                parts.append(f"• {factor}")
+        # کدهای دلیل
+        codes = ai_result.get('reason_codes', [])
+        if codes:
             parts.append("")
+            parts.append(f"🏷️ <b>کدها:</b> {', '.join(codes[:3])}")
         
-        risk_emoji = {
-            'کم': '🟢',
-            'متوسط': '🟡',
-            'زیاد': '🔴'
-        }.get(risk, '🟡')
-        parts.append(f"⚠️ <b>سطح ریسک:</b> {risk_emoji} {risk}")
-        
-        if recommendation:
-            parts.append(f"💡 <b>توصیه:</b> {recommendation}")
-        
-        parts.append(f"🎯 <b>نظر AI:</b> {opinion_emoji} {opinion}")
-        parts.append(f"📊 <b>اطمینان AI:</b> {confidence}%")
-        
-        if ai_result.get('disagreement', False):
+        # دلیل ابطال (در صورت وجود)
+        invalidation = ai_result.get('invalidation_reason')
+        if invalidation and direction == 'INVALID':
             parts.append("")
-            parts.append("⚠️ <b>اختلاف نظر با ربات وجود دارد</b>")
+            parts.append(f"⚠️ <b>دلیل ابطال:</b> {invalidation}")
         
         return "\n".join(parts)
+
+
+# =========================
+# تابع کمکی برای استفاده خارج از کلاس
+# =========================
+def create_ai_analyzer(config=Config) -> AIAnalyzer:
+    """ساخت نمونه از AIAnalyzer با تنظیمات پیش‌فرض"""
+    return AIAnalyzer(config)
+```
+       
