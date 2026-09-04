@@ -1,14 +1,24 @@
 {
-  "positions": [
+  "positions": [],
+  "balance": 526.2429177714768,
+  "initial_balance": 530.0,
+  "max_positions": 5,
+  "history": [
     {
       "id": "274220d4",
       "symbol": "ZEC",
       "side": "LONG",
       "entry_price": 1043.92,
+      "exit_price": 1010.0,
       "position_size": 106.0,
-      "stop_loss": 1018.7793436250811,
-      "take_profit": 1085.8210939581984,
+      "gross_pnl": -3.4442486014254037,
+      "net_pnl": -3.7570822285232657,
+      "fees": 0.3128336270978619,
+      "pnl_percent": -3.249291133420192,
       "entry_time": "2026-09-04T17:09:31.823649",
+      "exit_time": "2026-09-04T17:48:25.653780",
+      "close_reason": "stop_loss",
+      "duration_minutes": 38.89716875,
       "signal_data": {
         "symbol": "ZEC",
         "price": 1043.92,
@@ -110,16 +120,10 @@
         "buy_fee": 0.0,
         "sell_fee": 0.0,
         "timeframe": "15m"
-      },
-      "unrealized_pnl": 0.0,
-      "status": "OPEN"
+      }
     }
   ],
-  "balance": 424.0,
-  "initial_balance": 530.0,
-  "max_positions": 5,
-  "history": [],
-  "total_pnl": 0.0,
-  "total_trades": 0,
-  "updated_at": "2026-09-04T17:09:35.862813"
+  "total_pnl": -3.7570822285232657,
+  "total_trades": 1,
+  "updated_at": "2026-09-04T17:48:27.128986"
 }
