@@ -184,7 +184,7 @@ class CryptoSignalBot:
                         df=data['df'],
                         symbol=symbol,
                         current_price=data['price'],
-                        data_quality=data_quality=data.get('data_quality'),
+                        data_quality=data.get('data_quality'),
                         higher_tf=data.get('higher_tf', {})  # 🔥 جدید
                     )
 
