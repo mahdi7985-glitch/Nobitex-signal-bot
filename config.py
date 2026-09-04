@@ -284,7 +284,7 @@ class Config:
     # آستانه‌های سیگنال (اصلاح شده برای متقارن شدن)
     # ================================================
     MIN_SIGNAL_SCORE = 80
-    MIN_SCORE = 50                  # حداقل Score برای WAIT شدن (کاهش یافته از 60)
+    MIN_SCORE = 50                  # حداقل Score برای WAIT شدن
     MIN_DATA_QUALITY = 70
     MAX_RR_FOR_PRIORITY = 4.0
 
@@ -337,9 +337,9 @@ class Config:
     MARKET_WEIGHT = 10
 
     # =========================
-    # NEWS / NITRIMO RADAR
+    # NEWS / NITRIMO RADAR 🔥 غیرفعال شد
     # =========================
-    ENABLE_NEWS_ANALYSIS = True
+    ENABLE_NEWS_ANALYSIS = False  # 🔥 تغییر از True به False
     NEWS_SOURCE = "https://nitrimo.com/radar"
     NEWS_REFRESH_INTERVAL = 900
 
@@ -445,6 +445,39 @@ class Config:
     INITIAL_CAPITAL = 10000
     TRADING_FEE = 0.001
 
+    # ================================================
+    # 🔥 متغیرهای جدید اضافه شده
+    # ================================================
+    HARD_SCORE_THRESHOLD = 80       # فیلتر سخت‌افزاری اسکور (از این کمتر = WAIT)
+    DEFAULT_POSITION_SIZE = 0.25    # سایز پیش‌فرض پوزیشن
+    MAX_SAME_SECTOR = 2             # حداکثر تعداد سیگنال از هر سکتور
+
+    # ================================================
+    # 🔥 سکتوربندی دارایی‌ها
+    # ================================================
+    SECTOR_MAP = {
+        "BTC": "MAJOR",
+        "ETH": "MAJOR",
+        "SOL": "MAJOR",
+        "ADA": "MAJOR",
+        "DOT": "MAJOR",
+        "XRP": "MAJOR",
+        "LINK": "MAJOR",
+        "MATIC": "MAJOR",
+        "DOGE": "MEME",
+        "SHIB": "MEME",
+        "PEPE": "MEME",
+        "BANK": "OTHER",
+        "HOME": "OTHER",
+        "ZEC": "OTHER",
+        "CRV": "DEFI",
+        "UNI": "DEFI",
+        "AAVE": "DEFI",
+        "APT": "LAYER1",
+        "SUI": "LAYER1",
+        "SEI": "LAYER1",
+    }
+
     # =========================
     # VALIDATION
     # =========================
@@ -468,7 +501,7 @@ class Config:
             warnings.append(f"Total weight is {total_weight}, should be 100")
 
         # ================================================
-        # اعتبارسنجی آستانه‌های BUY/SELL (اضافه شده)
+        # اعتبارسنجی آستانه‌های BUY/SELL
         # ================================================
         if cls.BUY_THRESHOLD <= cls.SELL_THRESHOLD:
             errors.append(f"BUY_THRESHOLD ({cls.BUY_THRESHOLD}) must be greater than SELL_THRESHOLD ({cls.SELL_THRESHOLD})")
@@ -521,6 +554,9 @@ class Config:
         ✅ Min Score for WAIT: {cls.MIN_SCORE}
         ✅ BUY Threshold: {cls.BUY_THRESHOLD}
         ✅ SELL Threshold: {cls.SELL_THRESHOLD}
+        ✅ HARD Score Threshold: {cls.HARD_SCORE_THRESHOLD}
+        ✅ Default Position Size: {cls.DEFAULT_POSITION_SIZE}
+        ✅ Max Same Sector: {cls.MAX_SAME_SECTOR}
         ✅ Min Data Quality: {cls.MIN_DATA_QUALITY}
         ✅ Min Acceptable RR: {cls.MIN_ACCEPTABLE_RR}
         ✅ Min SELL Confidence: {cls.MIN_SELL_CONFIDENCE}
