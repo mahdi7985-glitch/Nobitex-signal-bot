@@ -183,34 +183,46 @@ class DataQuality:
         return True
     
     def _get_min_required_candles(self) -> int:
-        """Calculate minimum candles needed based on indicators"""
-        # Base minimum from config
-        base = Config.MIN_CANDLES_REQUIRED
-        
-        # Add buffer for EMA/SMA
-        ema_period = getattr(Config, 'EMA_TREND', 200)
-        buffer = 50
-        
-        # Check for other indicators
-        rsi_period = getattr(Config, 'RSI_PERIOD', 14)
-        macd_slow = getattr(Config, 'MACD_SLOW', 26)
-        adx_period = getattr(Config, 'ADX_PERIOD', 14)
-        
-        max_lookback = max(
-            ema_period,
-            rsi_period,
-            macd_slow,
-            adx_period
-        )
-        
-        # Need: max_lookback + buffer for calculations
-        required = max_lookback + buffer
-        
-        # Also ensure we have enough for requested limit
-        if self.requested_candles > 0:
-            required = min(required, self.requested_candles)
-        
-        return max(base, required)
+    """Calculate minimum required closed candles based on timeframe."""
+
+    min_by_timeframe = getattr(
+        Config,
+        'MIN_CANDLES_BY_TIMEFRAME',
+        {}
+    )
+
+    # Explicit minimum for this timeframe
+    base = min_by_timeframe.get(
+        self.timeframe,
+        Config.MIN_CANDLES_REQUIRED
+    )
+
+    # Indicator calculation requirement
+    ema_period = getattr(Config, 'EMA_TREND', 200)
+    buffer = 50
+
+    rsi_period = getattr(Config, 'RSI_PERIOD', 14)
+    macd_slow = getattr(Config, 'MACD_SLOW', 26)
+    adx_period = getattr(Config, 'ADX_PERIOD', 14)
+
+    max_lookback = max(
+        ema_period,
+        rsi_period,
+        macd_slow,
+        adx_period
+    )
+
+    indicator_required = max_lookback + buffer
+
+    # The configured timeframe minimum is authoritative.
+    # Do not raise it because of the global indicator buffer.
+    required = base
+
+    # Never require more than the requested number of candles
+    if self.requested_candles > 0:
+        required = min(required, self.requested_candles)
+
+    return required
     
     def _calculate_quality_score(self) -> float:
         """
