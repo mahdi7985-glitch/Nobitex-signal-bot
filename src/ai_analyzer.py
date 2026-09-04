@@ -595,5 +595,3 @@ class AIAnalyzer:
 def create_ai_analyzer(config=Config) -> AIAnalyzer:
     """ساخت نمونه از AIAnalyzer با تنظیمات پیش‌فرض"""
     return AIAnalyzer(config)
-```
-       
