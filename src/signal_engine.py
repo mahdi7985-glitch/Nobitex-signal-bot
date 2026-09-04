@@ -44,6 +44,11 @@ class SignalEngine:
         # ================================================
         self.HARD_SCORE_THRESHOLD = getattr(config, 'HARD_SCORE_THRESHOLD', 80)
 
+        # ================================================
+        # 🔥 جدید: آستانه کارمزد
+        # ================================================
+        self.FEE_THRESHOLD = getattr(config, 'FEE_THRESHOLD', 0.8)  # 0.5% کارمزد + 0.3% اسپرد
+
     def _format_price(self, price: float) -> float:
         """فرمت قیمت بر اساس اندازه آن."""
         if price == 0:
@@ -112,7 +117,8 @@ class SignalEngine:
         df: pd.DataFrame,
         symbol: str,
         current_price: float,
-        data_quality: Optional[Dict[str, Any]] = None
+        data_quality: Optional[Dict[str, Any]] = None,
+        higher_tf: Optional[Dict[str, pd.DataFrame]] = None  # 🔥 جدید برای تایم‌فریم‌های بالاتر
     ) -> Optional[Dict[str, Any]]:
         """
         تحلیل کامل یک نماد و تولید سیگنال
@@ -193,6 +199,23 @@ class SignalEngine:
                 }
 
             # ================================================
+            # STEP 3.6: 🔥 تحلیل تایم‌فریم‌های بالاتر
+            # ================================================
+            if higher_tf:
+                higher_trend = self._analyze_higher_timeframes(higher_tf)
+                if higher_trend == 'bullish':
+                    score_result['breakdown']['trend'] += 3
+                    logger.info(f"📈 {symbol}: Higher TF trend = BULLISH (+3 to trend)")
+                elif higher_trend == 'bearish':
+                    score_result['breakdown']['trend'] -= 3
+                    logger.info(f"📉 {symbol}: Higher TF trend = BEARISH (-3 to trend)")
+                else:
+                    logger.info(f"➡️ {symbol}: Higher TF trend = NEUTRAL")
+                
+                # به‌روزرسانی اسکور نهایی
+                score_result['total'] = self._recalculate_score(score_result)
+
+            # ================================================
             # STEP 4: SIGNAL RATING
             # ================================================
             signal_rating = self._get_signal_rating(score_result['total'])
@@ -239,6 +262,36 @@ class SignalEngine:
                     f"TP2={risk_levels.get('tp2_raw')} | "
                     f"RR={risk_levels.get('risk_reward')}"
                 )
+
+                # ================================================
+                # 🔥 بررسی کارمزد ۰.۵٪ + اسپرد
+                # ================================================
+                if risk_levels.get('tp1_raw') and risk_levels.get('stop_loss_raw'):
+                    if signal['action'] == 'BUY':
+                        expected_return = (risk_levels.get('tp1_raw') - current_price) / current_price * 100
+                    else:
+                        expected_return = (current_price - risk_levels.get('tp1_raw')) / current_price * 100
+                    
+                    if expected_return < self.FEE_THRESHOLD:
+                        logger.info(
+                            f"⏭️ {symbol}: Expected return {expected_return:.2f}% < {self.FEE_THRESHOLD}% (fee + spread) - REJECTED"
+                        )
+                        return {
+                            'symbol': symbol,
+                            'price': current_price,
+                            'signal': 'WAIT',
+                            'strength': 'NO_TRADE',
+                            'score': score_result['total'],
+                            'score_breakdown': score_result['breakdown'],
+                            'confidence': 0,
+                            'signal_rating': signal_rating,
+                            'exceptional': False,
+                            'exceptional_reason': f'Low expected return ({expected_return:.2f}% < {self.FEE_THRESHOLD}%)',
+                            'timestamp': datetime.now().isoformat(),
+                            'data_quality': data_quality,
+                            'position_size': 0.0,
+                            'position_value': 0.0
+                        }
 
                 if risk_levels.get('risk_reward', 0) < self.MIN_ACCEPTABLE_RR:
                     logger.info(
@@ -358,11 +411,60 @@ class SignalEngine:
                 # 🔥 اصلاح: استفاده از config به جای هاردکد
                 'position_size': getattr(self.config, 'DEFAULT_POSITION_SIZE', 0.25),
                 'position_value': getattr(self.config, 'DEFAULT_POSITION_SIZE', 0.25),
+                # 🔥 جدید: ذخیره تحلیل تایم‌فریم بالاتر
+                'higher_tf_trend': self._analyze_higher_timeframes(higher_tf) if higher_tf else 'neutral'
             }
 
         except Exception as e:
             logger.error(f"❌ Error analyzing {symbol}: {e}")
             return None
+
+    def _analyze_higher_timeframes(self, higher_tf: Dict[str, pd.DataFrame]) -> str:
+        """
+        تحلیل تایم‌فریم‌های بالاتر برای تشخیص روند اصلی
+        Returns: 'bullish', 'bearish', 'neutral'
+        """
+        if not higher_tf:
+            return 'neutral'
+        
+        signals = {}
+        for tf, df in higher_tf.items():
+            if df is None or len(df) < 50:
+                continue
+            
+            try:
+                ema_fast = df['close'].ewm(span=20).mean().iloc[-1]
+                ema_slow = df['close'].ewm(span=50).mean().iloc[-1]
+                price = df['close'].iloc[-1]
+                
+                if price > ema_fast > ema_slow:
+                    signals[tf] = 'bullish'
+                elif price < ema_fast < ema_slow:
+                    signals[tf] = 'bearish'
+                else:
+                    signals[tf] = 'neutral'
+            except Exception as e:
+                logger.warning(f"⚠️ Error analyzing {tf} for higher timeframe: {e}")
+                signals[tf] = 'neutral'
+        
+        # اولویت با تایم‌فریم بالاتر
+        for tf in ['1d', '4h', '1h']:
+            if tf in signals and signals[tf] in ['bullish', 'bearish']:
+                return signals[tf]
+        
+        return 'neutral'
+
+    def _recalculate_score(self, score_result: Dict[str, Any]) -> float:
+        """بازمحاسبه اسکور نهایی پس از تغییرات"""
+        breakdown = score_result.get('breakdown', {})
+        raw_score = sum(breakdown.values())
+        max_possible = 100  # حداکثر مجموع امتیازات
+        
+        # نرمال‌سازی به بازه ۰-۱۰۰
+        if max_possible > 0:
+            normalized = 50 + (raw_score / max_possible) * 50
+            return max(0, min(100, normalized))
+        return score_result.get('total', 50)
 
     def _calculate_score(
         self,
@@ -491,7 +593,7 @@ class SignalEngine:
         raw_score += volume_score
         max_possible += 15
 
-         # ================================================
+        # ================================================
         # VOLATILITY
         # ================================================
         volatility_score = 0
@@ -792,6 +894,7 @@ class SignalEngine:
                 exceptional = True
                 exceptional_reason = "breakout_support_with_high_volume"
 
+        # ===============================================
         # ================================================
         # تعیین سیگنال اصلی
         # ================================================
@@ -1028,7 +1131,7 @@ class SignalEngine:
         # ================================================
         # STEP 3.5: 🔥 SECTOR FILTER (جلوگیری از همبستگی بالا)
         # ================================================
-        sector_map = {
+        sector_map = getattr(self.config, 'SECTOR_MAP', {
             'BTC': 'MAJOR', 'ETH': 'MAJOR', 'SOL': 'MAJOR',
             'ADA': 'MAJOR', 'DOT': 'MAJOR', 'XRP': 'MAJOR',
             'LINK': 'MAJOR', 'MATIC': 'MAJOR',
@@ -1036,7 +1139,7 @@ class SignalEngine:
             'BANK': 'OTHER', 'HOME': 'OTHER', 'ZEC': 'OTHER',
             'CRV': 'DEFI', 'UNI': 'DEFI', 'AAVE': 'DEFI',
             'APT': 'LAYER1', 'SUI': 'LAYER1', 'SEI': 'LAYER1'
-        }
+        })
 
         selected_sectors = []
         sector_filtered = []
