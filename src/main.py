@@ -9,6 +9,8 @@ import sys
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
+import pandas as pd  # 🔥 اضافه شد
+
 from config import Config
 from src.data_fetcher import NobitexDataFetcher
 from src.signal_engine import SignalEngine
@@ -18,7 +20,7 @@ from src.bale_bot import BaleBot
 from src.formatter import MessageFormatter
 from src.performance_tracker import PerformanceTracker
 from src.paper_trader import PaperTrader
-from src.data_validator import DataValidator  # 🔥 جدید
+from src.data_validator import DataValidator
 from src.state_manager import (
     load_state, save_state, open_position,
     close_position, check_all_positions,
@@ -43,7 +45,7 @@ class CryptoSignalBot:
         # راه‌اندازی ماژول‌ها
         # =========================
         self.data_fetcher = NobitexDataFetcher()
-        self.data_validator = DataValidator(config)  # 🔥 جدید
+        self.data_validator = DataValidator(config)
         self.signal_engine = SignalEngine(config)
         self.news_reader = NewsReader(config)
         self.ai_analyzer = AIAnalyzer(config)
@@ -52,11 +54,10 @@ class CryptoSignalBot:
         self.performance_tracker = PerformanceTracker(config)
 
         # =========================
-        # راه‌اندازی Paper Trader (با پشتیبانی از ذخیره‌سازی)
+        # راه‌اندازی Paper Trader
         # =========================
         self.paper_trader = PaperTrader(config)
 
-        # گرفتن موجودی اولیه از BalanceManager
         initial_balance = self.paper_trader.get_balance()
         logger.info(f"✅ Paper Trader initialized with {initial_balance:.2f} USDT")
 
@@ -106,9 +107,6 @@ class CryptoSignalBot:
         logger.info(f"🔄 Starting scan at {datetime.now()}")
 
         try:
-            # ================================================
-            # 🔥 بارگذاری وضعیت قبلی
-            # ================================================
             state = load_state()
 
             symbols = self.config.get_active_symbols()
@@ -119,9 +117,9 @@ class CryptoSignalBot:
             logger.info(f"📊 Analyzing {len(symbols)} symbols")
 
             # ================================================
-            # 🔥 دریافت داده با اعتبارسنجی
+            # 🔥 دریافت داده با اعتبارسنجی + تایم‌فریم‌های بالاتر
             # ================================================
-            market_data = self._fetch_and_validate_market_data(symbols)  # 🔥 تغییر نام
+            market_data = self._fetch_and_validate_market_data(symbols)
             if not market_data:
                 logger.error("❌ No valid market data available")
                 return False
@@ -138,15 +136,12 @@ class CryptoSignalBot:
                 self.paper_trader.update_prices(current_prices)
 
             # ================================================
-            # 🔥 بررسی همه پوزیشن‌های باز
+            # بررسی پوزیشن‌های باز
             # ================================================
             positions = state.get("positions", [])
 
             if positions:
-                # به‌روزرسانی سود/زیان تحقق‌نیافته
                 state = update_unrealized_pnl(state, current_prices)
-
-                # بررسی شرایط خروج برای همه پوزیشن‌ها
                 to_close = check_all_positions(state, current_prices)
 
                 for item in to_close:
@@ -155,11 +150,9 @@ class CryptoSignalBot:
                     exit_price = item["exit_price"]
                     reason = item["reason"]
 
-                    # بستن پوزیشن
                     state = close_position(state, position_id, exit_price, reason)
                     save_state(state)
 
-                    # ارسال پیام بسته شدن
                     symbol = position["symbol"]
                     self.bale_bot.send_message(
                         f"🔴 پوزیشن بسته شد! ({reason})\n"
@@ -168,7 +161,6 @@ class CryptoSignalBot:
                     )
                     logger.info(f"✅ پوزیشن {symbol} بسته شد: {reason}")
 
-                # گزارش پوزیشن‌های باز باقیمانده
                 remaining = state.get("positions", [])
                 if remaining:
                     logger.info(f"⏳ {len(remaining)} پوزیشن باز:")
@@ -179,14 +171,7 @@ class CryptoSignalBot:
                 logger.info("📭 پوزیشنی باز نیست")
 
             # ================================================
-            # ⚠️ News غیرفعال شده - فقط برای سازگاری با کد
-            # ================================================
-            news_summary = None
-            news_sentiment = None
-            # News دیگر استفاده نمی‌شود
-
-            # ================================================
-            # تحلیل سیگنال‌ها
+            # تحلیل سیگنال‌ها با تایم‌فریم‌های بالاتر
             # ================================================
             all_results = []
             for symbol, data in market_data.items():
@@ -194,11 +179,13 @@ class CryptoSignalBot:
                     continue
 
                 try:
+                    # 🔥 ارسال تایم‌فریم‌های بالاتر به SignalEngine
                     result = self.signal_engine.analyze_symbol(
                         df=data['df'],
                         symbol=symbol,
                         current_price=data['price'],
-                        data_quality=data.get('data_quality')
+                        data_quality=data.get('data_quality'),
+                        higher_tf=data.get('higher_tf', {})  # 🔥 جدید
                     )
 
                     if result:
@@ -227,22 +214,18 @@ class CryptoSignalBot:
             top_signals = self.signal_engine.get_top_opportunities(all_results, limit=10)
 
             # ================================================
-            # 🔥 دریافت تحلیل AI برای سیگنال‌های برتر (مستقل)
+            # دریافت تحلیل AI
             # ================================================
             ai_results = {}
             if self.config.ENABLE_AI_ANALYSIS and top_signals:
-                for signal in top_signals[:5]:  # فقط ۵ تا سیگنال برتر
+                for signal in top_signals[:5]:
                     symbol = signal.get('symbol')
-                    
-                    # 🔥 دریافت کندل‌ها از market_data
                     ohlcv_data = market_data.get(symbol, {}).get('df')
                     current_price = signal.get('price', 0)
-                    
+
                     if ohlcv_data is not None and not ohlcv_data.empty:
-                        # تبدیل DataFrame به لیست دیکشنری
                         ohlcv_list = ohlcv_data[['open', 'high', 'low', 'close', 'volume']].to_dict('records')
-                        
-                        # 🔥 AI مستقل: فقط داده خام + نماد + قیمت
+
                         ai_result = self.ai_analyzer.analyze(
                             ohlcv_data=ohlcv_list,
                             symbol=symbol,
@@ -256,12 +239,9 @@ class CryptoSignalBot:
                             'confidence': 0,
                             'summary': 'No data for AI analysis'
                         }
-                    
+
                     ai_results[symbol] = ai_result
 
-                    # ================================================
-                    # 🔥 ذخیره اطلاعات AI در signal_data (با کلیدهای جدید)
-                    # ================================================
                     signal['ai_direction'] = ai_result.get('direction', 'NEUTRAL')
                     signal['ai_confidence'] = ai_result.get('confidence', 0)
                     signal['ai_summary'] = ai_result.get('summary', '')
@@ -271,14 +251,13 @@ class CryptoSignalBot:
                     time.sleep(0.3)
 
             # ================================================
-            # 🔥 باز کردن پوزیشن‌های جدید (تا ۵ تا)
+            # باز کردن پوزیشن‌های جدید
             # ================================================
             opened_count = 0
             for signal in top_signals:
                 if signal.get('signal') == 'BUY':
                     symbol = signal.get('symbol')
 
-                    # 🔥 بررسی: آیا این نماد قبلاً باز شده؟
                     if is_symbol_in_positions(state, symbol):
                         logger.info(f"⏭️ {symbol} در حال حاضر در پوزیشن باز است، رد شد")
                         continue
@@ -287,39 +266,32 @@ class CryptoSignalBot:
                     stop_loss = signal.get('stop_loss_raw')
                     take_profit = signal.get('tp1_raw')
 
-                    # بررسی معتبر بودن حد سود/ضرر
                     if not stop_loss or not take_profit or stop_loss >= take_profit:
                         logger.warning(f"⚠️ حد سود/ضرر نامعتبر برای {symbol}")
                         continue
 
-                    # بررسی RR
                     rr = signal.get('risk_reward', 0)
                     if rr < self.config.MIN_ACCEPTABLE_RR:
                         logger.info(f"⏭️ {symbol}: RR={rr:.2f} < {self.config.MIN_ACCEPTABLE_RR}")
                         continue
 
-                    # بررسی ظرفیت برای پوزیشن جدید
                     if not can_open_new_position(state):
                         logger.info(f"⏸️ ظرفیت پوزیشن‌ها پر شده ({MAX_POSITIONS})، توقف")
                         break
 
-                    # ================================================
-                    # 🔥 باز کردن پوزیشن با اطلاعات AI
-                    # ================================================
                     state = open_position(
                         state,
                         symbol=symbol,
                         price=price,
                         stop_loss=stop_loss,
                         take_profit=take_profit,
-                        signal_data=signal  # 🔥 شامل اطلاعات AI هست
+                        signal_data=signal
                     )
 
                     if state.get("positions") and len(state["positions"]) > opened_count:
                         opened_count += 1
                         save_state(state)
 
-                        # ارسال پیام باز شدن
                         ai_info = ""
                         if signal.get('ai_direction'):
                             ai_info = f"\n🤖 AI: {signal.get('ai_direction')} (اطمینان: {signal.get('ai_confidence')}/10)"
@@ -341,15 +313,14 @@ class CryptoSignalBot:
                 logger.info(f"✅ {opened_count} پوزیشن جدید باز شد")
 
             # ================================================
-            # ارسال سیگنال‌ها (بدون اجرای معامله)
+            # ارسال سیگنال‌ها
             # ================================================
             signals_to_send = []
-            for signal in top_signals[:5]:  # فقط ۵ تا سیگنال برتر رو ارسال کن
+            for signal in top_signals[:5]:
                 if self._should_send_signal(signal):
                     signals_to_send.append(signal)
 
             logger.info(f"📤 {len(signals_to_send)} signals to send out of {len(top_signals)} top signals")
-
             self._send_messages(all_results, signals_to_send, ai_results)
 
             # ================================================
@@ -377,7 +348,7 @@ class CryptoSignalBot:
             logger.info("=" * 50)
 
             # ================================================
-            # 🔥 گزارش وضعیت نهایی
+            # گزارش وضعیت نهایی
             # ================================================
             summary = get_performance_summary(state)
             positions = state.get("positions", [])
@@ -400,9 +371,6 @@ class CryptoSignalBot:
                         f"| TP: {pos.get('take_profit', 0):.4f}"
                     )
 
-            # ================================================
-            # 🔥 ذخیره وضعیت نهایی
-            # ================================================
             save_state(state)
 
             self.last_run_time = datetime.now()
@@ -417,14 +385,14 @@ class CryptoSignalBot:
     def _fetch_and_validate_market_data(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
         """
         دریافت و اعتبارسنجی داده بازار برای همه ارزها
-        🔥 ترکیب fetch + validation
+        🔥 شامل تایم‌فریم‌های بالاتر
         """
         market_data = {}
 
         for symbol in symbols:
             try:
                 # ================================================
-                # STEP 1: دریافت داده
+                # STEP 1: دریافت داده اصلی (15m)
                 # ================================================
                 df = self.data_fetcher.get_ohlcv(
                     symbol,
@@ -437,7 +405,27 @@ class CryptoSignalBot:
                     continue
 
                 # ================================================
-                # STEP 2: 🔥 اعتبارسنجی داده با DataValidator
+                # STEP 2: 🔥 دریافت تایم‌فریم‌های بالاتر
+                # ================================================
+                higher_tf_data = {}
+                for tf in self.config.HIGHER_TIMEFRAMES:
+                    try:
+                        df_higher = self.data_fetcher.get_ohlcv(
+                            symbol,
+                            timeframe=tf,
+                            limit=200
+                        )
+                        if df_higher is not None and len(df_higher) > 50:
+                            higher_tf_data[tf] = df_higher
+                            logger.debug(f"✅ {symbol}: Fetched {tf} with {len(df_higher)} candles")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Could not fetch {tf} for {symbol}: {e}")
+
+                if higher_tf_data:
+                    logger.info(f"📊 {symbol}: Fetched higher TFs: {list(higher_tf_data.keys())}")
+
+                # ================================================
+                # STEP 3: اعتبارسنجی داده اصلی
                 # ================================================
                 validation_result = self.data_validator.validate(df, symbol, self.config.TIMEFRAME)
 
@@ -445,26 +433,23 @@ class CryptoSignalBot:
                     logger.warning(
                         f"🚫 {symbol}: Data validation failed - {validation_result.get('reason', 'Unknown')}"
                     )
-                    if validation_result.get('issues'):
-                        for issue in validation_result.get('issues', []):
-                            logger.debug(f"   - {issue}")
                     continue
-
                 # ================================================
-                # STEP 3: دریافت قیمت
+                # STEP 4: دریافت قیمت
                 # ================================================
                 price = self.data_fetcher.get_current_price(symbol)
                 if not price:
                     logger.warning(f"⚠️ No price for {symbol}")
                     continue
 
-               # ================================================
-                # STEP 4: ذخیره داده + کیفیت
+                # ================================================
+                # STEP 5: ذخیره داده
                 # ================================================
                 market_data[symbol] = {
                     'df': df,
                     'price': price,
-                    'data_quality': validation_result,  # 🔥 استفاده از نتیجه اعتبارسنجی
+                    'data_quality': validation_result,
+                    'higher_tf': higher_tf_data,  # 🔥 تایم‌فریم‌های بالاتر
                     'validation_passed': True
                 }
 
@@ -601,10 +586,6 @@ class CryptoSignalBot:
             except KeyboardInterrupt:
                 logger.info("👋 Bot stopped by user")
                 self.running = False
-
-                # ================================================
-                # 🔥 گزارش نهایی
-                # ================================================
                 self._show_final_report()
                 break
             except Exception as e:
@@ -617,7 +598,6 @@ class CryptoSignalBot:
         logger.info("📊 FINAL PAPER TRADING REPORT")
         logger.info("=" * 60)
 
-        # بارگذاری وضعیت نهایی
         state = load_state()
         summary = get_performance_summary(state)
         positions = state.get("positions", [])
@@ -645,8 +625,6 @@ class CryptoSignalBot:
         """متوقف کردن ربات"""
         self.running = False
         logger.info("🛑 Bot stopped")
-
-        # نمایش گزارش نهایی
         self._show_final_report()
 
 
@@ -658,7 +636,6 @@ def main():
 
         if len(sys.argv) > 1 and sys.argv[1] == '--once':
             bot.run_once()
-            # نمایش گزارش بعد از یک بار اجرا
             bot._show_final_report()
         else:
             bot.run_forever()
