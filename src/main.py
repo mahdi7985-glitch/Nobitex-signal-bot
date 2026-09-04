@@ -184,7 +184,11 @@ class CryptoSignalBot:
                         df=data['df'],
                         symbol=symbol,
                         current_price=data['price'],
-                        data_quality=data.get('data_quality'),
+                        data_quality=(
+                            data['data_quality'].to_dict()
+                            if data.get('data_quality') is not None
+                            else None
+                                ),
                         higher_tf=data.get('higher_tf', {})  # 🔥 جدید
                     )
 
