@@ -131,14 +131,27 @@ class SignalEngine:
             return None
 
         quality_score = data_quality.get('quality_score', 0)
-        gate_status = data_quality.get('gate_result', {}).get('status', 'REJECT')
+        is_valid = data_quality.get('valid', False)
 
-        if gate_status == 'REJECT':
-            logger.warning(f"🚫 {symbol}: Data Quality REJECTED - Gate Status: {gate_status}")
+        if not is_valid:
+            reason = data_quality.get('reason', 'Unknown')
+            logger.warning(
+                f"🚫 {symbol}: Data Quality REJECTED - {reason}"
+            )
             return None
 
         if quality_score < self.MIN_DATA_QUALITY:
-            logger.warning(f"🚫 {symbol}: Data Quality too low - Score={quality_score:.1f}% < {self.MIN_DATA_QUALITY}%")
+            logger.warning(
+                f"🚫 {symbol}: Data Quality too low - "
+                f"Score={quality_score:.1f}% < {self.MIN_DATA_QUALITY}%"
+            )
+            return None
+
+        if quality_score < self.MIN_DATA_QUALITY:
+            logger.warning(
+                f"🚫 {symbol}: Data Quality too low - "
+                f"Score={quality_score:.1f}% < {self.MIN_DATA_QUALITY}%"
+            )
             return None
 
         try:
