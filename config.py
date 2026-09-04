@@ -200,7 +200,7 @@ class Config:
     # =========================
     TIMEFRAME = "15m"
     CANDLES_LIMIT = 500
-    MIN_CANDLES_REQUIRED = 200
+    MIN_CANDLES_REQUIRED = 499
     HIGHER_TIMEFRAMES = ["1h", "4h", "1d"]
 
     # =========================
