@@ -413,7 +413,7 @@ class CryptoSignalBot:
                         df_higher = self.data_fetcher.get_ohlcv(
                             symbol,
                             timeframe=tf,
-                            limit=200
+                            limit=self.config.CANDLES_LIMIT
                         )
                         if df_higher is not None and len(df_higher) > 50:
                             higher_tf_data[tf] = df_higher
