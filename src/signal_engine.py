@@ -28,7 +28,7 @@ class SignalEngine:
         # آستانهها از Config
         # ================================================
         self.MIN_ACCEPTABLE_RR = config.MIN_ACCEPTABLE_RR
-        self.MIN_SCORE = config.MIN_SCORE
+        self.MIN_SCORE_FOR_CONSIDERATION = config.MIN_SCORE_FOR_CONSIDERATION
         self.MIN_DATA_QUALITY = config.MIN_DATA_QUALITY
         self.MAX_RR_FOR_PRIORITY = config.MAX_RR_FOR_PRIORITY
         self.MIN_SELL_CONFIDENCE = config.MIN_SELL_CONFIDENCE
@@ -1081,8 +1081,8 @@ class SignalEngine:
                 continue
 
             score = r.get('score', 0)
-            if score < self.MIN_SCORE:
-                logger.debug(f"⏭️ {r.get('symbol')}: Filtered (Score={score:.1f} < {self.MIN_SCORE})")
+            if score < self.MIN_SCORE_FOR_CONSIDERATION:
+                logger.debug(f"⏭️ {r.get('symbol')}: Filtered (Score={score:.1f} < {self.MIN_SCORE_FOR_CONSIDERATION})")
                 continue
 
             rr = r.get('risk_reward')
