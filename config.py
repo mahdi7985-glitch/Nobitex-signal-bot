@@ -42,7 +42,7 @@ class Config:
     BALE_BOT_TOKEN = os.getenv("BALE_BOT_TOKEN")
     BALE_CHAT_ID = os.getenv("BALE_CHAT_ID")
 
-    # AI Settings (قابل تغییر از .env)
+    # AI Settings
     AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini")
     AI_MODEL = os.getenv("AI_MODEL", "gemini-2.5-flash")
     AI_API_KEY = os.getenv("AI_API_KEY")
@@ -203,10 +203,10 @@ class Config:
     MIN_CANDLES_REQUIRED = 499
     HIGHER_TIMEFRAMES = ["1h", "4h", "1d"]
     MIN_CANDLES_BY_TIMEFRAME = {
-    "15m": 499,
-    "1h": 399,
-    "4h": 299,
-    "1d": 199,
+        "15m": 499,
+        "1h": 399,
+        "4h": 299,
+        "1d": 199,
     }
 
     # =========================
@@ -242,9 +242,9 @@ class Config:
     # ATR RISK MANAGEMENT
     # =========================
     ATR_SL_MULTIPLIER = 1.5
+    ATR_SL_MULTIPLIER_HIGH_VOLATILITY = 2.0
     ATR_TP1_MULTIPLIER = 2.5
     ATR_TP2_MULTIPLIER = 4.0
-    ATR_SL_MULTIPLIER_HIGH_VOLATILITY = 1.5
 
     MIN_SL_PERCENT = 0.3
     MAX_SL_PERCENT = 10.0
@@ -274,7 +274,7 @@ class Config:
     VERY_LOW_VOLUME_RATIO = 0.3
 
     # =========================
-    # SIGNAL SCORING
+    # SIGNAL SCORING WEIGHTS
     # =========================
     WEIGHTS = {
         "trend": 20,
@@ -286,39 +286,30 @@ class Config:
         "support_resistance": 10,
     }
 
-    # ================================================
-    # آستانه‌های سیگنال (اصلاح شده برای متقارن شدن)
-    # ================================================
-    MIN_SIGNAL_SCORE = 80
-    MIN_SCORE = 50                  # حداقل Score برای WAIT شدن
-    MIN_DATA_QUALITY = 70
-    MAX_RR_FOR_PRIORITY = 4.0
+    # =========================
+    # SIGNAL THRESHOLDS (سیستم جدید و شفاف)
+    # =========================
+    HARD_REJECT_SCORE = 75          # زیر این مقدار = WAIT اجباری
+    BUY_THRESHOLD = 68              # از این مقدار به بالا = BUY
+    SELL_THRESHOLD = 32             # از این مقدار به پایین = SELL
+    MIN_SCORE_FOR_CONSIDERATION = 55
 
-    # آستانه‌های جدید برای BUY و SELL (متقارن)
-    BUY_THRESHOLD = 65              # حداقل Score برای سیگنال BUY
-    SELL_THRESHOLD = 35             # حداکثر Score برای سیگنال SELL
-
-    WEAK_SIGNAL_SCORE = 60
-    NORMAL_SIGNAL_SCORE = 70
-    STRONG_SIGNAL_SCORE = 80
-    VERY_STRONG_SIGNAL_SCORE = 85
-    EXCEPTIONAL_SIGNAL_SCORE = 90
-
-    EXCEPTIONAL_CONDITIONS = {
-        "breakout_with_volume": True,
-        "macd_strong_momentum": True,
-        "support_resistance_break": True,
-    }
+    WEAK_SIGNAL_SCORE = 70
+    NORMAL_SIGNAL_SCORE = 78
+    STRONG_SIGNAL_SCORE = 85
+    VERY_STRONG_SIGNAL_SCORE = 90
+    EXCEPTIONAL_SIGNAL_SCORE = 94
 
     # =========================
     # RISK MANAGEMENT
     # =========================
     MIN_ACCEPTABLE_RR = 1.5
-
-    # =========================
-    # SELL SIGNAL REQUIREMENTS
-    # =========================
+    FEE_THRESHOLD = 0.8             # حداقل بازده مورد نیاز بعد از کارمزد و اسپرد (درصد)
     MIN_SELL_CONFIDENCE = 75
+    DEFAULT_POSITION_SIZE = 0.25
+    MAX_SAME_SECTOR = 2
+    MAX_RR_FOR_PRIORITY = 4.0
+    MIN_DATA_QUALITY = 70
 
     # =========================
     # HISTORICAL CONFIDENCE
@@ -343,9 +334,9 @@ class Config:
     MARKET_WEIGHT = 10
 
     # =========================
-    # NEWS / NITRIMO RADAR 🔥 غیرفعال شد
+    # NEWS
     # =========================
-    ENABLE_NEWS_ANALYSIS = False  # 🔥 تغییر از True به False
+    ENABLE_NEWS_ANALYSIS = False
     NEWS_SOURCE = "https://nitrimo.com/radar"
     NEWS_REFRESH_INTERVAL = 900
 
@@ -363,8 +354,6 @@ class Config:
     # =========================
     # AI ANALYSIS
     # =========================
-    ENABLE_AI_ANALYSIS = True
-
     AI_MAX_NEWS_ITEMS = 10
     AI_TIMEOUT = 30
     AI_TEMPERATURE = 0.7
@@ -451,37 +440,47 @@ class Config:
     INITIAL_CAPITAL = 10000
     TRADING_FEE = 0.001
 
-    # ================================================
-    # 🔥 متغیرهای جدید اضافه شده
-    # ================================================
-    HARD_SCORE_THRESHOLD = 80       # فیلتر سخت‌افزاری اسکور (از این کمتر = WAIT)
-    DEFAULT_POSITION_SIZE = 0.25    # سایز پیش‌فرض پوزیشن
-    MAX_SAME_SECTOR = 2             # حداکثر تعداد سیگنال از هر سکتور
-
-    # ================================================
-    # 🔥 سکتوربندی دارایی‌ها
-    # ================================================
+    # =========================
+    # SECTOR MAP (کامل شده)
+    # =========================
     SECTOR_MAP = {
+        # MAJOR
         "BTC": "MAJOR",
         "ETH": "MAJOR",
         "SOL": "MAJOR",
+        "XRP": "MAJOR",
         "ADA": "MAJOR",
         "DOT": "MAJOR",
-        "XRP": "MAJOR",
-        "LINK": "MAJOR",
-        "MATIC": "MAJOR",
+        "ATOM": "MAJOR",
+        "TRX": "MAJOR",
+
+        # MEME
         "DOGE": "MEME",
         "SHIB": "MEME",
-        "PEPE": "MEME",
-        "BANK": "OTHER",
-        "HOME": "OTHER",
-        "ZEC": "OTHER",
+        "HMSTR": "MEME",
+        "DOGS": "MEME",
+        "COOKIE": "MEME",
+        "PUMP": "MEME",
+
+        # DEFI
         "CRV": "DEFI",
-        "UNI": "DEFI",
-        "AAVE": "DEFI",
+        "DEXE": "DEFI",
+        "BICO": "DEFI",
+
+        # LAYER1
         "APT": "LAYER1",
-        "SUI": "LAYER1",
-        "SEI": "LAYER1",
+
+        # GOLD
+        "XAUT": "GOLD",
+        "PAXG": "GOLD",
+
+        # OTHER
+        "XLM": "OTHER",
+        "ZEC": "OTHER",
+        "GRAM": "OTHER",
+        "HOME": "OTHER",
+        "PROM": "OTHER",
+        "BANK": "OTHER",
     }
 
     # =========================
@@ -506,11 +505,10 @@ class Config:
         if total_weight != 100:
             warnings.append(f"Total weight is {total_weight}, should be 100")
 
-        # ================================================
-        # اعتبارسنجی آستانه‌های BUY/SELL
-        # ================================================
         if cls.BUY_THRESHOLD <= cls.SELL_THRESHOLD:
-            errors.append(f"BUY_THRESHOLD ({cls.BUY_THRESHOLD}) must be greater than SELL_THRESHOLD ({cls.SELL_THRESHOLD})")
+            errors.append(
+                f"BUY_THRESHOLD ({cls.BUY_THRESHOLD}) must be greater than SELL_THRESHOLD ({cls.SELL_THRESHOLD})"
+            )
 
         if not (0 <= cls.BUY_THRESHOLD <= 100):
             errors.append(f"BUY_THRESHOLD ({cls.BUY_THRESHOLD}) must be between 0 and 100")
@@ -518,16 +516,18 @@ class Config:
         if not (0 <= cls.SELL_THRESHOLD <= 100):
             errors.append(f"SELL_THRESHOLD ({cls.SELL_THRESHOLD}) must be between 0 and 100")
 
-        if cls.BUY_THRESHOLD < cls.MIN_SCORE:
-            warnings.append(f"BUY_THRESHOLD ({cls.BUY_THRESHOLD}) is less than MIN_SCORE ({cls.MIN_SCORE}) - BUY signals may be filtered out")
+        if cls.HARD_REJECT_SCORE <= cls.BUY_THRESHOLD:
+            warnings.append(
+                f"HARD_REJECT_SCORE ({cls.HARD_REJECT_SCORE}) should be higher than BUY_THRESHOLD ({cls.BUY_THRESHOLD})"
+            )
 
-        if cls.SELL_THRESHOLD > cls.MIN_SCORE:
-            warnings.append(f"SELL_THRESHOLD ({cls.SELL_THRESHOLD}) is greater than MIN_SCORE ({cls.MIN_SCORE}) - SELL signals may be filtered out")
-
-        # ================================================
-        # اعتبارسنجی سطوح امتیاز
-        # ================================================
-        if not (cls.WEAK_SIGNAL_SCORE < cls.NORMAL_SIGNAL_SCORE < cls.STRONG_SIGNAL_SCORE < cls.VERY_STRONG_SIGNAL_SCORE < cls.EXCEPTIONAL_SIGNAL_SCORE):
+        if not (
+            cls.WEAK_SIGNAL_SCORE
+            < cls.NORMAL_SIGNAL_SCORE
+            < cls.STRONG_SIGNAL_SCORE
+            < cls.VERY_STRONG_SIGNAL_SCORE
+            < cls.EXCEPTIONAL_SIGNAL_SCORE
+        ):
             errors.append("SCORE levels must be in increasing order")
 
         if cls.ENABLE_AI_ANALYSIS and cls.AI_REQUIRED and not cls.AI_API_KEY:
@@ -536,6 +536,8 @@ class Config:
         for symbol in cls.SYMBOLS:
             if symbol not in cls.NOBITEX_SYMBOL_MAP:
                 warnings.append(f"Symbol {symbol} has no mapping in NOBITEX_SYMBOL_MAP")
+            if symbol not in cls.SECTOR_MAP:
+                warnings.append(f"Symbol {symbol} has no sector in SECTOR_MAP")
 
         if warnings:
             print("\n⚠️ Config Warnings:")
@@ -543,7 +545,9 @@ class Config:
                 print(f"  - {w}")
 
         if errors:
-            raise ValueError(f"Config validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
+            raise ValueError(
+                "Config validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+            )
 
         return True
 
@@ -557,22 +561,22 @@ class Config:
         ✅ Symbols: {len(active_symbols)} active
         ✅ Timeframe: {cls.TIMEFRAME}
         ✅ Scan Interval: {cls.SCAN_INTERVAL}s
-        ✅ Min Score for WAIT: {cls.MIN_SCORE}
+        ✅ Hard Reject Score: {cls.HARD_REJECT_SCORE}
         ✅ BUY Threshold: {cls.BUY_THRESHOLD}
         ✅ SELL Threshold: {cls.SELL_THRESHOLD}
-        ✅ HARD Score Threshold: {cls.HARD_SCORE_THRESHOLD}
+        ✅ Min Score for Consideration: {cls.MIN_SCORE_FOR_CONSIDERATION}
         ✅ Default Position Size: {cls.DEFAULT_POSITION_SIZE}
         ✅ Max Same Sector: {cls.MAX_SAME_SECTOR}
         ✅ Min Data Quality: {cls.MIN_DATA_QUALITY}
         ✅ Min Acceptable RR: {cls.MIN_ACCEPTABLE_RR}
+        ✅ Fee Threshold: {cls.FEE_THRESHOLD}%
         ✅ Min SELL Confidence: {cls.MIN_SELL_CONFIDENCE}
         ✅ AI Enabled: {cls.ENABLE_AI_ANALYSIS}
         ✅ AI Required: {cls.AI_REQUIRED}
         ✅ News Enabled: {cls.ENABLE_NEWS_ANALYSIS}
         ✅ Test Mode: {cls.TEST_MODE}
         ✅ Risk per Trade: {cls.ATR_SL_MULTIPLIER}x ATR
+        ✅ High Volatility SL: {cls.ATR_SL_MULTIPLIER_HIGH_VOLATILITY}x ATR
         ✅ S/R Filter: ENABLED={cls.ENABLE_SR_FILTER}
-        ✅ S/R Reject Low RR: {cls.SR_REJECT_LOW_RR}
-        ✅ S/R Bars: LEFT={cls.LEFT_BARS}, RIGHT={cls.RIGHT_BARS}
         ===================================
         """
